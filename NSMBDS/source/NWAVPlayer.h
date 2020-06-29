@@ -29,11 +29,9 @@ namespace NWAVPlayer
 	typedef void(*EventHandler)(int);
 
 	/// <summary>Initializes the player system. (Hook after SND_Init)</summary>
-	/// <returns>True if the music wasn't stopped. False otherwise.</returns>
 	void init();
 
 	/// <summary>Updates the game fading. (Hook after SND_Main)</summary>
-	/// <returns>True if the music wasn't stopped. False otherwise.</returns>
 	bool updateFade();
 
 	/// <summary>Plays a music.</summary>
