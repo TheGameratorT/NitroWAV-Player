@@ -34,12 +34,6 @@
 
 namespace NWAVPlayer
 {
-	/*========================\
-	|  Typedef declarations.  |
-	\========================*/
-
-	typedef u8(*pStrmBufT)[2][STRM_BUF_SIZE];
-
 	/*==========================\
 	|  Structure declarations.  |
 	\==========================*/
@@ -57,7 +51,7 @@ namespace NWAVPlayer
 		int sampleRate;
 		int loopStart;
 		int loopEnd;
-		u8 format;
+		SNDWaveFormat format : 8;
 		u8 stereo;
 		u8 numEvents;
 		u8 padding;
@@ -91,8 +85,8 @@ namespace NWAVPlayer
 		EventHandler eventHandler;
 	};
 
-	const int headerSize = sizeof(Header);
-	const int eventInfoSize = sizeof(EventInfo);
+	constexpr int headerSize = sizeof(Header);
+	constexpr int eventInfoSize = sizeof(EventInfo);
 
 	/*=======================\
 	|  Static declarations.  |
@@ -114,6 +108,8 @@ namespace NWAVPlayer
 	static OSMessage msgBuf;
 
 	static EventInfo* events;
+
+	typedef u8(*pStrmBufT)[2][STRM_BUF_SIZE];
 	static pStrmBufT pStrmBuf;
 
 	/*=========================\
@@ -374,17 +370,19 @@ namespace NWAVPlayer
 		s32 timerValue = SND_TIMER_CLOCK / sInfo.playRate;
 		u32 alarmPeriod = timerValue * (STRM_BUF_PAGESIZE / sInfo.bytesPerSample) / 32;
 
+		s32 loopLen = STRM_BUF_SIZE / sizeof(u32);
+
 		//Setup channels.
 		for (int i = 0; i < sInfo.chCount; i++)
 		{
 			bool left = i == 0;
 			SND_SetupChannelPcm(
 				left ? CHANNEL_L_NUM : CHANNEL_R_NUM,
-				static_cast<SNDWaveFormat>(hInfo.format),
+				hInfo.format,
 				left ? (*pStrmBuf)[0] : (*pStrmBuf)[1],
 				SND_CHANNEL_LOOP_REPEAT,
 				0,
-				STRM_BUF_SIZE / sizeof(u32),
+				loopLen,
 				sInfo.volume,
 				SND_CHANNEL_DATASHIFT_NONE,
 				timerValue,
@@ -394,6 +392,17 @@ namespace NWAVPlayer
 
 		//Setup sound alarm for updater thread.
 		SND_SetupAlarm(ALARM_NUM, alarmPeriod, alarmPeriod, SoundAlarmHandler, &sInfo);
+	}
+
+	//Reloads the current timers to apply new settings.
+	void reloadTimers()
+	{
+		bool notPaused = !sInfo.isPaused;
+		if (notPaused)
+			setPaused(true);
+		setup();
+		if (notPaused)
+			setPaused(false);
 	}
 
 	//Gets the music speed.
@@ -406,14 +415,7 @@ namespace NWAVPlayer
 		fx32 sampleRate = hInfo.sampleRate << FX32_SHIFT;
 		sInfo.playRate = FX_MulInline(sampleRate, speed) >> FX32_SHIFT;
 		sInfo.speed = speed;
-
-		//Update the music.
-		bool notPaused = !sInfo.isPaused;
-		if (notPaused)
-			setPaused(true);
-		setup();
-		if (notPaused)
-			setPaused(false);
+		reloadTimers();
 	}
 
 	//Loads the NWAV events that will be used to trigger the current callback function set.
@@ -520,12 +522,14 @@ namespace NWAVPlayer
 
 		//Startup stream thread.
 		OS_InitMessageQueue(&msgQ, &msgBuf, 1);
-		OS_CreateThread(&strmThread,
+		OS_CreateThread(
+			&strmThread,
 			StrmThread,
 			nullptr,
 			&strmThreadStack[THREAD_STACK_SIZE],
 			THREAD_STACK_SIZE,
-			STREAM_THREAD_PRIO);
+			STREAM_THREAD_PRIO
+		);
 		OS_WakeupThreadDirect(&strmThread);
 	}
 }

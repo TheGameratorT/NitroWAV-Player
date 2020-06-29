@@ -20,10 +20,14 @@
 #include "nitro_if.h"
 #include "Extras.h"
 
+#ifdef __INTELLISENSE__
+#define __attribute__(x)
+#endif // __INTELLISENSE__
+
 static bool& doBahp = *(bool*)0x02088B9C;
 
 //Implement enemy dance animation events
-void NWAV_UpdateBahps()
+static void updateBahps()
 {
 	if (!NWAVPlayer::getPaused())
 	{
@@ -43,7 +47,7 @@ void NWAV_UpdateBahps()
 	}
 }
 
-void NWAV_MainEventHandler(int eventID)
+static void mainEventHandler(int eventID)
 {
 	switch (eventID)
 	{
@@ -62,14 +66,14 @@ void repl_0204F2F0()
 {
 	NNS_SndInit(); //Keep replaced instruction
 	NWAVPlayer::init();
-	NWAVPlayer::setEventHandler(NWAV_MainEventHandler);
+	NWAVPlayer::setEventHandler(mainEventHandler);
 }
 
 void repl_0204EC74()
 {
 	NNS_SndMain(); //Keep replaced instruction
 	NWAVPlayer::updateFade();
-	NWAV_UpdateBahps();
+	updateBahps();
 }
 
 //Reduce sound heap size and init
@@ -93,15 +97,15 @@ void repl_02009434() {}
 |   This is where the Nitro WAV player is controlled.          |
 \=============================================================*/
 
-const int firstWavID = 2089;
+constexpr int firstWavID = 2089;
 
 //Backup the original functions
-__attribute__((naked)) void Music_PlaySeqBak(int seqID, int sfxSetID) { asm("STMFD SP!, {R4,LR}"); asm("B 0x02011E80"); }
-__attribute__((naked)) void Music_LoadSeqBak(int seqID) { asm("STMFD SP!, {R4,LR}"); asm("B 0x0204F198"); }
-__attribute__((naked)) void Music_SetTempoBak(int ratio) { asm("STMFD SP!, {R4,LR}"); asm("B 0x0204E530"); }
-__attribute__((naked)) void Music_SetVolumeBak(int targetVolume, int frames) { asm("STMFD SP!, {R4,LR}"); asm("B 0x0204DCB8"); }
-__attribute__((naked)) void Music_PauseSeqBak(bool flag) { asm("STMFD SP!, {R4,LR}"); asm("B 0x0204E480"); }
-__attribute__((naked)) void Music_StopSeqBak(int fadeFrame) { asm("STMFD SP!, {R4,LR}"); asm("B 0x0204E424"); }
+__attribute__((naked)) static void playSeq(int seqID, int sfxSetID) { asm("STMFD SP!, {R4,LR}\nB 0x02011E80"); }
+__attribute__((naked)) static void loadSeq(int seqID) { asm("STMFD SP!, {R4,LR}\nB 0x0204F198"); }
+__attribute__((naked)) static void setTempo(int ratio) { asm("STMFD SP!, {R4,LR}\nB 0x0204E530"); }
+__attribute__((naked)) static void setVolume(int targetVolume, int frames) { asm("STMFD SP!, {R4,LR}\nB 0x0204DCB8"); }
+__attribute__((naked)) static void pauseSeq(bool flag) { asm("STMFD SP!, {R4,LR}\nB 0x0204E480"); }
+__attribute__((naked)) static void stopSeq(int fadeFrame) { asm("STMFD SP!, {R4,LR}\nB 0x0204E424"); }
 
 static bool GetIfSequenced(int seqID)
 {
@@ -136,12 +140,12 @@ void nsub_02011E7C(int seqID, int sfxSetID)
 	{
 		if (currSeq != seqID)
 			NWAVPlayer::stop(0);
-		Music_PlaySeqBak(seqID, sfxSetID);
+		playSeq(seqID, sfxSetID);
 	}
 	else
 	{
 		if (currSeq != seqID)
-			Music_StopSeqBak(0);
+			stopSeq(0);
 
 		NWAVPlayer::play(wavID);
 
@@ -153,33 +157,33 @@ void nsub_02011E7C(int seqID, int sfxSetID)
 void nsub_0204F194(int seqID)
 {
 	if (GetIfSequenced(seqID))
-		Music_LoadSeqBak(seqID);
+		loadSeq(seqID);
 }
 
 //Replace set tempo
 void nsub_0204E52C(int ratio)
 {
-	Music_SetTempoBak(ratio);
+	setTempo(ratio);
 	NWAVPlayer::setSpeed(ratio << 12 >> 8);
 }
 
 //Replace set volume
 void nsub_0204DCB4(int targetVolume, int frames)
 {
-	Music_SetVolumeBak(targetVolume, frames);
+	setVolume(targetVolume, frames);
 	NWAVPlayer::setVolume(targetVolume, frames);
 }
 
 //Replace pause
 void nsub_0204E47C(bool flag)
 {
-	Music_PauseSeqBak(flag);
+	pauseSeq(flag);
 	NWAVPlayer::setPaused(flag);
 }
 
 //Replace stop
 void nsub_0204E420(int fadeFrame)
 {
-	Music_StopSeqBak(fadeFrame);
+	stopSeq(fadeFrame);
 	NWAVPlayer::stop(fadeFrame);
 }
