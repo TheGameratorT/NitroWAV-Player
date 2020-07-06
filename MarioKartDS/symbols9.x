@@ -21,3 +21,5 @@ FS_OpenFileFast = 0x2004A80;
 FS_InitFile = 0x2004D80;
 
 FX_MulFunc = 0x21488E8;
+
+PushCommand_impl = 0x020207EC;
