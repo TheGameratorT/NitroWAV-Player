@@ -5,11 +5,11 @@ This player which relies on a custom WAV format which I named NWAV, allows strea
 
 # Supported Games
 
-| Game                     | State        | Patch Requirements |
-| -------------------------|--------------|--------------------|
-| New Super Mario Bros. DS | Almost done  | [NSMB-ASMReference](https://github.com/Overblade/NSMB-ASMReference) |
-| Mario Kart DS            | Not finished |                    |
-| Super Mario 64 DS        | Not started  |                    |
+| Game                     | State       | Patch Requirements |
+| -------------------------|-------------|--------------------|
+| New Super Mario Bros. DS | Almost done | [NSMB-ASMReference](https://github.com/Overblade/NSMB-ASMReference) |
+| Mario Kart DS            | Almost done |                    |
+| Super Mario 64 DS        | Not started |                    |
 
 # Supported WAV formats
 The source WAV file that is fed to the converter must follow these specifications:

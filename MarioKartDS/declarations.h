@@ -3,7 +3,7 @@
 |  This is meant for the code to be compilable without the SDK.  |
 \===============================================================*/
 
-#define FX32_CAST(x) ((fx32)x)
+#define FX_Mul(v1, v2) FX_MulFunc(v1, v2)
 #define FX32_SHIFT 12
 #define MATH_CLAMP(x, low, high) ( ( (x) > (high) ) ? (high) : ( ( (x) < (low) ) ? (low) : (x) ) )
 
@@ -65,6 +65,7 @@ extern "C"
 	void SND_SetupAlarm(int alarmNo, u32 tick, u32 period, SNDAlarmHandler handler, void *arg);
 	void SND_StopTimer(u32 chBitMask, u32 capBitMask, u32 alarmBitMask, u32 flags);
 	void SND_StartTimer(u32 chBitMask, u32 capBitMask, u32 alarmBitMask, u32 flags);
+	void SND_SetChannelTimer(u32 chBitMask, int timer);
 	
 	bool FS_SeekFile(FSFile *p_file, s32 offset, FSSeekFileMode origin);
 	s32  FS_ReadFile(FSFile *p_file, void *dst, s32 len);
@@ -72,9 +73,10 @@ extern "C"
 	bool FS_OpenFileFast(FSFile* p_file, void* archivePtr, int file_id);
 	void FS_InitFile(FSFile *p_file);
 
-	static inline fx32 FX_MulInline(fx32 v1, fx32 v2) {
-		return FX32_CAST(((s64)(v1)*v2 + 0x800LL) >> FX32_SHIFT);
+	fx32 FX_MulFunc(fx32 v1, fx32 v2);
+	
+	//Custom FX function.
+	static inline s64 FX_MulInline64(s64 a1, s64 a2) {
+		return ((s64)a1 * (s64)a2 + 0x800) >> FX32_SHIFT;
 	}
 }
-
-int getPlayerCount(); //Temporary while the NSMB-ASMReference doesn't have documentation on it.
