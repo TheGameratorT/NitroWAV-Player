@@ -47,11 +47,11 @@ typedef enum
 
 extern "C"
 {
-	void OS_Panic();
+	void OS_Terminate();
 	void OS_WakeupThreadDirect(OSThread *thread);
 	void OS_CreateThread(OSThread *thread, void (*func)(void *), void *arg, void *stack, u32 stackSize, u32 prio);
-	bool OS_ReceiveMessage(OSMessageQueue *mq, OSMessage *msg, s32 flags);
-	bool OS_SendMessage(OSMessageQueue *mq, OSMessage msg, s32 flags);
+	BOOL OS_ReceiveMessage(OSMessageQueue *mq, OSMessage *msg, s32 flags);
+	BOOL OS_SendMessage(OSMessageQueue *mq, OSMessage msg, s32 flags);
 	void OS_InitMessageQueue(OSMessageQueue *mq, OSMessage *msgArray, s32 msgCount);
 	
 	void MI_CpuFill8(void *dest, u8 data, u32 size);
@@ -65,18 +65,32 @@ extern "C"
 	void SND_SetupAlarm(int alarmNo, u32 tick, u32 period, SNDAlarmHandler handler, void *arg);
 	void SND_StopTimer(u32 chBitMask, u32 capBitMask, u32 alarmBitMask, u32 flags);
 	void SND_StartTimer(u32 chBitMask, u32 capBitMask, u32 alarmBitMask, u32 flags);
-	void SND_SetChannelTimer(u32 chBitMask, int timer);
 	
-	bool FS_SeekFile(FSFile *p_file, s32 offset, FSSeekFileMode origin);
+	BOOL FS_SeekFile(FSFile *p_file, s32 offset, FSSeekFileMode origin);
 	s32  FS_ReadFile(FSFile *p_file, void *dst, s32 len);
-	bool FS_CloseFile(FSFile *p_file);
-	bool FS_OpenFileFast(FSFile* p_file, void* archivePtr, int file_id);
+	BOOL FS_CloseFile(FSFile *p_file);
+	BOOL FS_OpenFileFast(FSFile* p_file, void* archivePtr, int file_id);
 	void FS_InitFile(FSFile *p_file);
-
-	fx32 FX_MulFunc(fx32 v1, fx32 v2);
 	
-	//Custom FX function.
-	static inline s64 FX_MulInline64(s64 a1, s64 a2) {
-		return ((s64)a1 * (s64)a2 + 0x800) >> FX32_SHIFT;
-	}
+	fx32 FX_MulFunc(fx32 v1, fx32 v2);
+}
+
+static inline s64 FX_Mul64(s64 v1, s64 v2) {
+	return ((s64)v1 * (s64)v2 + 0x800LL) >> FX32_SHIFT;
+}
+
+static inline void* malloc(size_t size) {
+	void* process = Process_getCurrent();
+	void* handle = Process_getHeapHandle(process);
+	return MKDS_Alloc(handle, size);
+}
+
+static inline void* calloc(size_t num, size_t size) {
+	return malloc(num * size);
+}
+
+static inline void free(void* ptr) {
+	void* process = Process_getCurrent();
+	void* handle = Process_getHeapHandle(process);
+	MKDS_Free(handle, ptr);
 }

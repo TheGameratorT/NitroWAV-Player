@@ -4,7 +4,7 @@
 |  You may modify this file and use it for whatever you want  |
 |  just be sure to credit me (TheGameratorT).                 |
 |                                                             |
-|  Hope you like it just as much as I had fun coding this!    |
+|  Hope you like it just as much as I suffered coding this!   |
 |                                                             |
 |  ---------------------------------------------------------  |
 |                                                             |
@@ -32,7 +32,8 @@ extern "C" {
 	/// <param name="speed">Sets the speed to be played. (0 = do not change)</param>
 	/// <param name="volume">Sets the volume to be played. (0 = do not change)</param>
 	/// <param name="resume">The speed scale related to the music playing. (0 = do not resume)</param>
-	void NWAV_Play(int fileID, fx32 speed, int volume, fx32 resume);
+	/// <param name="offset">The offset in samples to skip. (0 = do not offset)</param>
+	void NWAV_Play(int fileID, fx32 speed, int volume, fx32 resume, int offset);
 
 	/// <summary>Stops the music playing.</summary>
 	/// <param name="frames">Number of frames where the volume shift occurs.</param>
@@ -55,18 +56,25 @@ extern "C" {
 	/// <param name="speed">The target speed for the music to be played at.</param>
 	void NWAV_SetSpeed(fx32 tempo);
 
-	/// <summary>Sets either if the music pitch waves up and down.</summary>
-	/// <param name="waving">True if should wave. False otherwise.</param>
-	/// <param name="returnSpeed">The destination speed when the waving is stopped.</param>
-	void NWAV_SetPitchWaving(bool waving, fx32 returnSpeed);
-
 	/// <summary>Gets if the music is paused.</summary>
 	/// <returns>True if the music is paused. False otherwise.</returns>
-	bool NWAV_GetPaused();
+	BOOL NWAV_GetPaused();
 
 	/// <summary>Sets if the music is paused.</summary>
 	/// <param name="paused">Sets the music as paused when true, unpauses when false.</param>
-	void NWAV_SetPaused(bool paused);
+	void NWAV_SetPaused(BOOL paused);
+
+	/// <summary>Gets if the music is playing.</summary>
+	/// <returns>True if the music is playing. False otherwise.</returns>
+	BOOL NWAV_GetPlaying();
+
+	/// <summary>Gets the sample rate of the music.</summary>
+	/// <returns>Returns the samples per second.</returns>
+	int NWAV_GetSampleRate();
+
+	/// <summary>Gets the current sample the music is at.</summary>
+	/// <returns>Returns the current sample the music is at.</returns>
+	int NWAV_GetCursorPos();
 
 	/// <summary>Sets the event handler function.</summary>
 	/// <param name="func">The function pointer of the event handler.</param>

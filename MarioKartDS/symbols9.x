@@ -1,4 +1,4 @@
-OS_Panic = 0x200FD1C;
+OS_Terminate = 0x200FD1C;
 OS_WakeupThreadDirect = 0x200DF68;
 OS_CreateThread = 0x200E28C;
 OS_ReceiveMessage = 0x200EA3C;
@@ -23,3 +23,8 @@ FS_InitFile = 0x2004D80;
 FX_MulFunc = 0x21488E8;
 
 PushCommand_impl = 0x020207EC;
+
+Process_getHeapHandle = 0x020364E0;
+Process_getCurrent = 0x020364E8;
+MKDS_Free = 0x02036B30;
+MKDS_Alloc = 0x02036BEC;

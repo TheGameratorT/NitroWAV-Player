@@ -4,7 +4,7 @@
 |  You may modify this file and use it for whatever you want  |
 |  just be sure to credit me (TheGameratorT).                 |
 |                                                             |
-|  Hope you like it just as much as I had fun coding this!    |
+|  Hope you like it just as much as I suffered coding this!   |
 |                                                             |
 |  ---------------------------------------------------------  |
 |                                                             |
@@ -23,7 +23,10 @@
 #define STRM_BUF_PAGECOUNT 2
 #define STRM_BUF_SIZE (STRM_BUF_PAGESIZE * STRM_BUF_PAGECOUNT)
 
-#define MATH_CLAMP(x, low, high) ( ( (x) > (high) ) ? (high) : ( ( (x) < (low) ) ? (low) : (x) ) )
+//#define NWAV_DEBUG_PRINT
+#ifdef NWAV_DEBUG_PRINT
+#include "nocashPrint.h"
+#endif
 
 typedef struct NWAVEventInfo
 {
@@ -51,8 +54,7 @@ typedef struct NWAVStream
 
 	u8 isPlaying;
 	u8 isPaused;
-	s8 pitchIndex;
-	u8 reserved;
+	u8 reserved[2];
 
 	fx32 speed;
 	int playRate;
@@ -79,11 +81,10 @@ typedef struct NWAVStream
 } NWAVStream;
 
 static NWAVStream strm = {
-	.isPlaying = false,
-	.isPaused = true,
+	.isPlaying = FALSE,
+	.isPaused = TRUE,
 	.speed = 0x1000,
-	.volume = 127,
-	.pitchIndex = -1
+	.volume = 127
 };
 
 static const int headerSize = sizeof(NWAVHeader);
@@ -120,7 +121,7 @@ static int alignSample(NWAVStream* strm, int pos)
 	return pos;
 }
 
-static void seek(NWAVStream* strm, int pos, bool sample)
+static void seek(NWAVStream* strm, int pos, BOOL sample)
 {
 	if (sample)
 	{
@@ -136,6 +137,14 @@ static void seek(NWAVStream* strm, int pos, bool sample)
 	FS_SeekFile(&strm->file, pos, FS_SEEK_SET);
 }
 
+static void readSnd(NWAVStream* strm, void* dst, s32 len)
+{
+	if (strm->volume == 0)
+		FS_SeekFile(&strm->file, len, FS_SEEK_CUR);
+	else
+		FS_ReadFile(&strm->file, dst, len);
+}
+
 static void prepareBuffer(NWAVStream* strm)
 {
 	strm->bufPage = 0;
@@ -143,9 +152,13 @@ static void prepareBuffer(NWAVStream* strm)
 	update(strm);
 }
 
-bool NWAV_GetPaused() { return strm.isPaused; }
-void NWAV_SetPaused(bool paused)
+BOOL NWAV_GetPaused() { return strm.isPaused; }
+void NWAV_SetPaused(BOOL paused)
 {
+#ifdef NWAV_DEBUG_PRINT
+	nocashPrint1("NWAV_SetPaused(%r0%)\n", paused);
+#endif
+
 	if (strm.isPlaying && strm.isPaused != paused)
 	{
 		if (paused)
@@ -161,9 +174,15 @@ void NWAV_SetPaused(bool paused)
 	}
 }
 
+BOOL NWAV_GetPlaying() { return strm.isPlaying; }
+
 int NWAV_GetVolume() { return strm.volume; }
 void NWAV_SetVolume(int volume, int frames)
 {
+#ifdef NWAV_DEBUG_PRINT
+	nocashPrint2("NWAV_SetVolume(%r0%, %r1%)\n", volume, frames);
+#endif
+
 	if (strm.volume == volume)
 		return;
 
@@ -183,9 +202,16 @@ void NWAV_SetVolume(int volume, int frames)
 	}
 }
 
+int NWAV_GetSampleRate() { return strm.header.sampleRate; }
+int NWAV_GetCursorPos() { return strm.musicCursor; }
+
 //For internal use
-static void stop(NWAVStream* strm, int frames, bool waitForUpdate)
+static void stop(NWAVStream* strm, int frames, BOOL waitForUpdate)
 {
+#ifdef NWAV_DEBUG_PRINT
+	nocashPrint3("NWAV_StopInternal(%r0%, %r1%, %r2%)\n", (int)strm, frames, waitForUpdate);
+#endif
+
 	if (!strm->isPlaying)
 		return;
 
@@ -197,8 +223,8 @@ static void stop(NWAVStream* strm, int frames, bool waitForUpdate)
 	}
 	else
 	{
-		NWAV_SetPaused(true);
-		strm->isPlaying = false;
+		NWAV_SetPaused(TRUE);
+		strm->isPlaying = FALSE;
 
 		strm->lastPos = strm->musicCursor;
 
@@ -212,7 +238,7 @@ static void stop(NWAVStream* strm, int frames, bool waitForUpdate)
 //For external use
 void NWAV_Stop(int frames)
 {
-	stop(&strm, frames, false);
+	stop(&strm, frames, FALSE);
 }
 
 void NWAV_SetEventHandler(NWAVEventHandler func) { strm.eventHandler = func; }
@@ -232,83 +258,28 @@ static void updateEvents(NWAVStream* strm)
 	}
 }
 
-static int pitchForIndex[] = {
-	0xF00,
-	0xE00,
-	0xF00,
-	0x1000,
-	0x1100,
-	0x1200,
-	0x1100,
-	0x1000
-};
-
-//Sets the music as faster, but does not care to align the buffer.
-//WARNING: Be extremely cautious.
-static void setSpeedFast(NWAVStream* strm, fx32 speed)
-{
-	fx32 sampleRate = strm->header.sampleRate << FX32_SHIFT;
-	int rate = FX_Mul(sampleRate, speed) >> FX32_SHIFT;
-
-	s32 timerValue = SND_TIMER_CLOCK / rate;
-	SND_SetChannelTimer(strm->chMask, timerValue);
-}
-
-//Used to switch pitch per frame update.
-//WARNING: Somewhat misaligned with the buffer.
-static void setAndAlternatePitch(NWAVStream* strm)
-{
-	setSpeedFast(strm, pitchForIndex[strm->pitchIndex]);
-	strm->pitchIndex++;
-	if (strm->pitchIndex > 7)
-		strm->pitchIndex = 0;
-}
-
-void NWAV_SetPitchWaving(bool waving, fx32 returnSpeed)
-{
-	if (strm.isPlaying)
-	{
-		if (waving)
-		{
-			NWAV_SetSpeed(0x1000);
-			strm.pitchIndex = 0;
-		}
-		else
-		{
-			NWAV_SetSpeed(returnSpeed);
-			strm.pitchIndex = -1;
-		}
-	}
-}
-
 //Updates music settings each frame.
-bool NWAV_UpdatePerFrame()
+BOOL NWAV_UpdateFade()
 {
-	if (strm.isPlaying)
+	if (strm.isPlaying && strm.fadeFrame)
 	{
-		if (strm.pitchIndex != -1)
-			setAndAlternatePitch(&strm);
+		int newVolume = strm.volume - strm.fadeDec;
+		newVolume = MATH_CLAMP(newVolume, 0, 127);
 
-		if (strm.fadeFrame)
+		NWAV_SetVolume(newVolume, 0);
+		strm.fadeFrame--;
+
+		if (strm.fadeFrame == 0)
 		{
-			int newVolume = strm.volume - strm.fadeDec;
-			newVolume = MATH_CLAMP(newVolume, 0, 127);
-
-			NWAV_SetVolume(newVolume, 0);
-			strm.fadeFrame--;
-
-			if (strm.fadeFrame == 0)
+			NWAV_SetVolume(strm.targetVolume, 0);
+			if (strm.stopMode == 1)
 			{
-				NWAV_SetVolume(strm.targetVolume, 0);
-				if (strm.stopMode == 1)
-				{
-					stop(&strm, 0, false);
-					return false;
-				}
+				stop(&strm, 0, FALSE);
+				return FALSE;
 			}
 		}
 	}
-	return true;
+	return TRUE;
 }
 
 static void updateCheckEnd(NWAVStream* strm, pStrmBufT pBuf, int len)
@@ -318,13 +289,13 @@ static void updateCheckEnd(NWAVStream* strm, pStrmBufT pBuf, int len)
 	{
 		if (strm->musicCursor > strm->header.loopEnd)
 		{
-			seek(strm, strm->header.loopStart, true);
+			seek(strm, strm->header.loopStart, TRUE);
 			if (leftOver > 0)
 			{
 				for (int i = 0; i < strm->chCount; i++)
-					FS_ReadFile(&strm->file, &(*pBuf)[i][len], leftOver);
+					readSnd(strm, &(*pBuf)[i][len], leftOver);
 			}
-			seek(strm, strm->header.loopStart + (leftOver / strm->bytesPerSample), true);
+			seek(strm, strm->header.loopStart + (leftOver / strm->bytesPerSample), TRUE);
 		}
 	}
 	else
@@ -336,7 +307,7 @@ static void updateCheckEnd(NWAVStream* strm, pStrmBufT pBuf, int len)
 				for (int i = 0; i < strm->chCount; i++)
 					MI_CpuClear8(&(*pBuf)[i][len], leftOver);
 			}
-			stop(strm, 0, true);
+			stop(strm, 0, TRUE);
 		}
 	}
 }
@@ -346,7 +317,7 @@ static void update(NWAVStream* strm)
 	//Check for delayed stop.
 	if (strm->stopMode == 2)
 	{
-		stop(strm, 0, false);
+		stop(strm, 0, FALSE);
 		return;
 	}
 
@@ -362,7 +333,7 @@ static void update(NWAVStream* strm)
 
 	//Read the data to the buffer.
 	for (int ch = 0; ch < strm->chCount; ch++)
-		FS_ReadFile(&strm->file, (*pBuf)[ch], len);
+		readSnd(strm, (*pBuf)[ch], len);
 
 	strm->musicCursor += strm->samplesPerUpdate;
 
@@ -381,7 +352,7 @@ static void setup(NWAVStream* strm)
 
 	for (int i = 0; i < strm->chCount; i++)
 	{
-		bool left = i == 0;
+		BOOL left = i == 0;
 		SND_SetupChannelPcm(
 			left ? CHANNEL_L_NUM : CHANNEL_R_NUM,
 			strm->header.format,
@@ -400,20 +371,24 @@ static void setup(NWAVStream* strm)
 
 static void updateStreamInfo(NWAVStream* strm)
 {
-	bool notPaused = !strm->isPaused;
+	BOOL notPaused = !strm->isPaused;
 
 	if (notPaused)
-		NWAV_SetPaused(true);
+		NWAV_SetPaused(TRUE);
 
 	setup(strm);
 
 	if (notPaused)
-		NWAV_SetPaused(false);
+		NWAV_SetPaused(FALSE);
 }
 
 fx32 NWAV_GetSpeed() { return strm.speed; }
 void NWAV_SetSpeed(fx32 speed)
 {
+#ifdef NWAV_DEBUG_PRINT
+	nocashPrint1("NWAV_SetSpeed(%r0%)\n", speed);
+#endif
+
 	fx32 sampleRate = strm.header.sampleRate << FX32_SHIFT;
 	strm.playRate = FX_Mul(sampleRate, speed) >> FX32_SHIFT;
 	strm.speed = speed;
@@ -423,14 +398,14 @@ void NWAV_SetSpeed(fx32 speed)
 
 static void loadEvents(NWAVStream* strm)
 {
-	events = (NWAVEventInfo*)malloc(sizeof(NWAVEventInfo) * strm->header.numEvents);
+	events = (NWAVEventInfo*)calloc(strm->header.numEvents, sizeof(NWAVEventInfo));
 	for (int i = 0; i < strm->header.numEvents; i++)
 	{
 		int val = 0;
 		FS_ReadFile(&strm->file, &val, 1);
 		events[i].eventID = val;
 	}
-	seek(strm, headerSize + strm->eventIDBlockSize, false);
+	seek(strm, headerSize + strm->eventIDBlockSize, FALSE);
 	for (int i = 0; i < strm->header.numEvents; i++)
 	{
 		int val;
@@ -439,14 +414,19 @@ static void loadEvents(NWAVStream* strm)
 	}
 }
 
-void NWAV_Play(int fileID, fx32 speed, int volume, fx32 resume)
+void NWAV_Play(int fileID, fx32 speed, int volume, fx32 resume, int offset)
 {
+#ifdef NWAV_DEBUG_PRINT
+	nocashPrint3("NWAV_Play(%r0%, %r1%, %r2%, ", fileID, speed, volume);
+	nocashPrint2("%r0%, %r1%)\n", resume, offset);
+#endif
+
 	if (strm.isPlaying)
-		stop(&strm, 0, false);
+		stop(&strm, 0, FALSE);
 
 	FS_InitFile(&strm.file);
 	if (!FS_OpenFileFast(&strm.file, (void*)0x216F36C, fileID))
-		OS_Panic();
+		OS_Terminate();
 
 	FS_ReadFile(&strm.file, &strm.header, headerSize);
 
@@ -481,25 +461,28 @@ void NWAV_Play(int fileID, fx32 speed, int volume, fx32 resume)
 
 	strm.musicEnd = (((strm.header.fileSize - headerSize - strm.eventBlockSize) / strm.chCount) / strm.bytesPerSample);
 
-	pStrmBuf = (pStrmBufT)malloc(STRM_BUF_SIZE * strm.chCount);
+	pStrmBuf = (pStrmBufT)calloc(strm.chCount, STRM_BUF_SIZE);
 
 	int resumePos = 0;
 	if (resume)
-		resumePos = FX_MulInline64((s64)strm.lastPos << FX32_SHIFT, resume) >> FX32_SHIFT;
+		resumePos = FX_Mul64((s64)strm.lastPos << FX32_SHIFT, resume) >> FX32_SHIFT;
 
-	seek(&strm, resumePos, true);
+	resumePos += offset;
+	resumePos %= strm.musicEnd;
+
+	seek(&strm, resumePos, TRUE);
 	NWAV_SetSpeed(strm.speed);
 
-	strm.isPlaying = true;
-	strm.isPaused = true;
-	NWAV_SetPaused(false);
+	strm.isPlaying = TRUE;
+	strm.isPaused = TRUE;
+	NWAV_SetPaused(FALSE);
 }
 
 static void StrmThread(void* arg)
 {
 	OSMessage message;
 
-	while (true)
+	while (TRUE)
 	{
 		OS_ReceiveMessage(&msgQ, &message, OS_MESSAGE_BLOCK);
 		update((NWAVStream*)message);
@@ -508,16 +491,22 @@ static void StrmThread(void* arg)
 
 void NWAV_Init()
 {
+#ifdef NWAV_DEBUG_PRINT
+	nocashPrint("NWAV_Init()\n");
+#endif
+
 	//Lock the channels.
 	SND_LockChannel(1 << CHANNEL_L_NUM | 1 << CHANNEL_R_NUM, 0);
 
 	//Startup stream thread.
 	OS_InitMessageQueue(&msgQ, msgBuf, 1);
-	OS_CreateThread(&strmThread,
+	OS_CreateThread(
+		&strmThread,
 		StrmThread,
 		NULL,
 		&strmThreadStack[THREAD_STACK_SIZE],
 		THREAD_STACK_SIZE,
-		STREAM_THREAD_PRIO);
+		STREAM_THREAD_PRIO
+	);
 	OS_WakeupThreadDirect(&strmThread);
 }
