@@ -89,15 +89,15 @@ __attribute__((naked)) void repl_02012FC0()
 	asm("BX  LR");
 }
 
-//Fix HDMA
-void repl_02009434() {}
+//FS uses DMA channel 3.
+int repl_02009444() { return 3; }
 
 /*=============================================================\
 |   NSMB playback control interface replacement.               |
 |   This is where the Nitro WAV player is controlled.          |
 \=============================================================*/
 
-constexpr int firstWavID = 2089;
+constexpr int firstWavID = 2088;
 
 //Backup the original functions
 __attribute__((naked)) static void playSeq(int seqID, int sfxSetID) { asm("STMFD SP!, {R4,LR}\nB 0x02011E80"); }
