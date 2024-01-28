@@ -23,6 +23,8 @@
 #define STRM_BUF_PAGECOUNT 2
 #define STRM_BUF_SIZE (STRM_BUF_PAGESIZE * STRM_BUF_PAGECOUNT)
 
+#define MATH_CLAMP(x, low, high) ( ( (x) > (high) ) ? (high) : ( ( (x) < (low) ) ? (low) : (x) ) )
+
 //#define NWAV_DEBUG_PRINT
 #ifdef NWAV_DEBUG_PRINT
 #include "nocashPrint.h"
@@ -152,6 +154,18 @@ static void prepareBuffer(NWAVStream* strm)
 	update(strm);
 }
 
+static inline void* NWAV_malloc(size_t size) {
+	void* process = Process_getCurrent();
+	void* handle = Process_getHeapHandle(process);
+	return MKDS_Alloc(handle, size);
+}
+
+static inline void NWAV_free(void* ptr) {
+	void* process = Process_getCurrent();
+	void* handle = Process_getHeapHandle(process);
+	MKDS_Free(handle, ptr);
+}
+
 BOOL NWAV_GetPaused() { return strm.isPaused; }
 void NWAV_SetPaused(BOOL paused)
 {
@@ -230,8 +244,8 @@ static void stop(NWAVStream* strm, int frames, BOOL waitForUpdate)
 
 		FS_CloseFile(&strm->file);
 		if (strm->header.numEvents)
-			free(events);
-		free(pStrmBuf);
+			NWAV_free(events);
+		NWAV_free(pStrmBuf);
 	}
 }
 
@@ -398,7 +412,7 @@ void NWAV_SetSpeed(fx32 speed)
 
 static void loadEvents(NWAVStream* strm)
 {
-	events = (NWAVEventInfo*)calloc(strm->header.numEvents, sizeof(NWAVEventInfo));
+	events = (NWAVEventInfo*)NWAV_malloc(strm->header.numEvents * sizeof(NWAVEventInfo));
 	for (int i = 0; i < strm->header.numEvents; i++)
 	{
 		int val = 0;
@@ -461,7 +475,7 @@ void NWAV_Play(int fileID, fx32 speed, int volume, fx32 resume, int offset)
 
 	strm.musicEnd = (((strm.header.fileSize - headerSize - strm.eventBlockSize) / strm.chCount) / strm.bytesPerSample);
 
-	pStrmBuf = (pStrmBufT)calloc(strm.chCount, STRM_BUF_SIZE);
+	pStrmBuf = (pStrmBufT)NWAV_malloc(strm.chCount * STRM_BUF_SIZE);
 
 	int resumePos = 0;
 	if (resume)

@@ -14,7 +14,7 @@
 
 #include "NWAVPlayer.h"
 
-#define NWAV_HAS_HQ_TEMPO 1
+#define NWAV_HAS_HQ_TEMPO 0
 
 #define NWAV_FIRST_ID 610
 #define NWAV_TABLE_SIZE 76
@@ -226,7 +226,7 @@ void NWAVh_SetPitch(NNSSndHandle* handle, u16 trackBitMask, int pitch)
 	{
 		if (pitch != 0 && pitch != 64)
 		{
-			int fileID = curFileID + NWAV_HQ_PITCH_OFFSET;
+			int fileID = /*curFileID + */NWAV_HQ_PITCH_OFFSET;
 			int resume = fastTempoMode ? 0x12C0/*((300 / 256) * 0x1000)*/ : 0x1000;
 			NWAV_Play(fileID, 0x1000, 0, resume, 0);
 			isPitchTrackPlaying = TRUE;
