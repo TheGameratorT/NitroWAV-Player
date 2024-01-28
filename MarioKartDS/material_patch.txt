@@ -1,0 +1,2 @@
+0x02063464 from 16 00 50 E3 to 28 00 50 E3 (changed course ID from 0x16 Yoshi Falls to 0x28 GCN RR)
+0x02154990 from "falls_01" to "ShdwOff"
