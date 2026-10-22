@@ -10,6 +10,7 @@
 
 #include "stream.hpp"
 
+
 namespace NWAV
 {
 	/*==========================\
@@ -430,14 +431,20 @@ namespace NWAV
 
 	Handle play(u32 fileID, const PlayParams& params)
 	{
+		NWAV_LOG("NWAV play: fileID=" << fileID << " priority=" << u32(params.priority) << "\n");
+
 		if (!romArchive)
+		{
+			NWAV_LOG("NWAV play: no ROM archive, init was not called\n");
 			return InvalidHandle;
+		}
 
 		OS_LockMutex(&lock);
 
 		Slot* slot = pickSlot(params.priority);
 		if (!slot)
 		{
+			NWAV_LOG("NWAV play: no free slot\n");
 			OS_UnlockMutex(&lock);
 			return InvalidHandle;
 		}
@@ -448,12 +455,14 @@ namespace NWAV
 		FS_InitFile(&s.file);
 		if (!FS_OpenFileFast(&s.file, FSFileID{ romArchive, fileID }))
 		{
+			NWAV_LOG("NWAV play: could not open file " << fileID << "\n");
 			OS_UnlockMutex(&lock);
 			return InvalidHandle;
 		}
 
 		if (!Core::parseWav(&s.file, s.info))
 		{
+			NWAV_LOG("NWAV play: not a valid WAV, size=" << u32(FS_GetLength(&s.file)) << "\n");
 			FS_CloseFile(&s.file);
 			OS_UnlockMutex(&lock);
 			return InvalidHandle;
@@ -463,6 +472,7 @@ namespace NWAV
 		u8* memory = static_cast<u8*>(initParams.allocate(ringSize * s.info.channels + NWAV_READ_SIZE));
 		if (!memory)
 		{
+			NWAV_LOG("NWAV play: could not allocate " << (ringSize * s.info.channels + NWAV_READ_SIZE) << " bytes\n");
 			FS_CloseFile(&s.file);
 			OS_UnlockMutex(&lock);
 			return InvalidHandle;
@@ -515,6 +525,10 @@ namespace NWAV
 			startFade(s, params.volume, params.fadeInFrames, false);
 
 		startTimers(s);
+
+		NWAV_LOG("NWAV play: started slot=" << slotIndex(s) << " format=" << u32(s.info.format) << " channels=" << u32(s.info.channels)
+			<< " rate=" << s.info.sampleRate << " frames=" << s.info.numFrames << " loop=" << u32(ph.looping)
+			<< " volume=" << u32(params.volume) << "\n");
 
 		Handle handle = s.handle;
 		OS_UnlockMutex(&lock);
@@ -673,6 +687,7 @@ namespace NWAV
 	{
 		initParams = params;
 		romArchive = FS_FindArchive("rom", 3);
+		NWAV_LOG("NWAV init: romArchive=" << romArchive << "\n");
 
 		u32 mask = 0;
 		for (u32 i = 0; i < NWAV_MAX_STREAMS * 2; i++)

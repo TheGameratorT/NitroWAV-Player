@@ -16,7 +16,7 @@ namespace NWAV::Hooks
 	struct BGMEntry
 	{
 		u32 seqID;		// The sequence to replace.
-		u32 fileID;		// The WAV file that plays instead.
+		u32 fileID;		// The WAV file that plays instead, as an extended file ID ("fid" literal).
 		s32 decibels;	// Attenuation in tenths of a decibel. Value range = [-723, 0]
 	};
 
@@ -25,6 +25,10 @@ namespace NWAV::Hooks
 	/// a project replaces it by defining this function.
 	/// </summary>
 	const BGMEntry* getBGMTable(u32& count);
+
+	/// <summary>Starts streaming a WAV file by its extended file ID, as used by the game and the "fid" literal.</summary>
+	/// <returns>The playback handle, or InvalidHandle if the file is invalid or no stream was free.</returns>
+	Handle playExtFile(u32 extFileID, const PlayParams& params = {});
 
 	/// <summary>Mirrors the game's BGM sequence players onto streams. (Called by the frame hook)</summary>
 	void updateBGM();

@@ -6,6 +6,7 @@
 
 #include "stream.hpp"
 
+
 namespace NWAV::Core
 {
 	constexpr u32 fourCC(const char (&s)[5])
@@ -141,7 +142,10 @@ namespace NWAV::Core
 			if (id == fourCC("fmt "))
 			{
 				if (!parseFmt(file, body, size, info))
+				{
+					NWAV_LOG("NWAV wav: unsupported fmt chunk\n");
 					return false;
+				}
 				hasFmt = true;
 			}
 			else if (id == fourCC("data"))
@@ -169,7 +173,10 @@ namespace NWAV::Core
 		}
 
 		if (!hasFmt || !hasData)
+		{
+			NWAV_LOG("NWAV wav: missing chunk, fmt=" << u32(hasFmt) << " data=" << u32(hasData) << "\n");
 			return false;
+		}
 
 		if (info.format == Format::Ima)
 		{

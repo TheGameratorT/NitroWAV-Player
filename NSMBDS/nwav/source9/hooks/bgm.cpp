@@ -84,14 +84,21 @@ namespace NWAV::Hooks
 				b.started = false;
 				unbind(b);
 
+				NWAV_LOG("NWAV BGM: player " << i << " started, seqPlayer=" << seqPlayer
+					<< " seqType=" << u32(seqPlayer ? seqPlayer->seqType : 0) << " seqNo=" << u32(seqPlayer ? seqPlayer->seqNo : 0) << "\n");
+
 				if (seqPlayer && seqPlayer->seqType == NNS_SND_PLAYER_SEQ_TYPE_SEQ)
 					b.entry = findEntry(seqPlayer->seqNo);
+				NWAV_LOG("NWAV BGM: entry=" << b.entry << "\n");
 				if (b.entry)
 				{
 					b.seqPlayer = seqPlayer;
-					b.stream = NWAV::play(b.entry->fileID, { .priority = BGMPriority });
+					b.stream = playExtFile(b.entry->fileID, { .priority = BGMPriority });
 					if (b.stream == InvalidHandle)
+					{
+						NWAV_LOG("NWAV BGM: stream failed, the sequence plays instead\n");
 						b.entry = nullptr; // Let the sequence play rather than go silent.
+					}
 				}
 			}
 
@@ -101,6 +108,7 @@ namespace NWAV::Hooks
 			// The sequence stopped, or finished fading out.
 			if (seqPlayer != b.seqPlayer)
 			{
+				NWAV_LOG("NWAV BGM: player " << i << " sequence stopped, unbinding\n");
 				unbind(b);
 				continue;
 			}
@@ -134,6 +142,7 @@ namespace NWAV::Hooks
 	BOOL NWAV_startSeq(NNSSndHandle* handle, int seqNo)
 	{
 		BOOL started = NNS_SndArcPlayerStartSeq(handle, seqNo);
+		NWAV_LOG("NWAV startSeq: seqNo=" << seqNo << " started=" << started << " player=" << findPlayer(handle) << "\n");
 		if (started)
 			onSeqStarted(handle);
 		return started;

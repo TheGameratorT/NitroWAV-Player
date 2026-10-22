@@ -57,6 +57,7 @@ namespace NWAV
 	void update();
 
 	/// <summary>Starts streaming a WAV file.</summary>
+	/// <param name="fileID">The NitroFS file ID, which counts the overlays.</param>
 	/// <returns>The playback handle, or InvalidHandle if the file is invalid or no stream was free.</returns>
 	Handle play(u32 fileID, const PlayParams& params = {});
 
