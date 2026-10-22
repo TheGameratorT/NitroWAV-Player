@@ -28,6 +28,13 @@ components:
       target: arm9
       sources: "source9/hooks/sound.cpp"
 
+  # Makes the game's FS_Init read the card with the CPU instead of DMA channel 2,
+  # which the background HDMA interferes with while streaming.
+  - FSInit:
+      target: arm9
+      requires: Hooks
+      defines: NWAV_HOOK_FS_INIT
+
   # Plays a stream in place of each sequence listed by NWAV::Hooks::getBGMTable,
   # following its volume, fades, pauses and stops.
   - BGMReplace:

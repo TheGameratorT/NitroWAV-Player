@@ -46,10 +46,13 @@ into these formats, to check a file, or to migrate old `.nwav` files.
 ```cpp
 #include "nwav/nwav.hpp"
 
-NWAV::Handle h = NWAV::play("music/boss.wav"fid);
+NWAV::Handle h = NWAV::Hooks::playExtFile("music/boss.wav"fid);
 NWAV::setVolume(h, 64, 30); // Fade to half volume over 30 frames.
 NWAV::stop(h, 60);          // Fade out over 60 frames, then stop.
 ```
+
+`NWAV::play` takes a NitroFS file ID, which counts the game's 131 overlays, while
+the `fid` literal gives the game's extended ID. `playExtFile` adds the offset.
 
 `PlayParams` sets the volume, pan, priority, loop mode, speed, start frame,
 fade-in and event handler. See `NSMBDS/nwav/include/nwav/nwav.hpp`.
@@ -63,9 +66,14 @@ game is a component (see `NSMBDS/nwav/module.yaml`), which a project can switch 
 |--------------------|--------------|
 | `Config`           | Stream count, buffer sizes and thread priority (see `NSMBDS/nwav/include/nwav/config.hpp`). |
 | `Hooks`            | Starts the player with the sound system and updates it once per frame. |
+| `FSInit`           | Makes the game read the card with the CPU instead of DMA channel 2, which the background HDMA interferes with while streaming. |
 | `BGMReplace`       | Plays a WAV in place of the game's BGM sequences, following their volume, fades, pauses, crossfades and stops. |
 | `BGMFollowTempo`   | Speeds the stream up along with the hurry-up tempo. |
 | `SceneIntegration` | Pauses streams when the game pauses its sound, and stops non-BGM streams on a scene switch. |
+
+The module needs `-fno-short-enums` in your common compiler flags, because the
+game's structs were built with 4 byte enums. Define `NWAV_DEBUG` to log what the
+player does through `Log`, which prints in `NTR_DEBUG` builds.
 
 To replace BGM, define the table anywhere in your project:
 
