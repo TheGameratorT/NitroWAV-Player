@@ -49,6 +49,13 @@ components:
       requires: BGMReplace
       defines: NWAV_BGM_FOLLOW_TEMPO
 
+  # Raises the game's "bahp" flag (the enemies' dance beat) in single player on
+  # each cue point named "bahp" of a BGM stream, as the sequences used to.
+  - BGMBahp:
+      target: arm9
+      requires: BGMReplace
+      defines: NWAV_BGM_BAHP
+
   # Pauses streams with the game's sound and stops non-BGM streams on scene switches.
   - SceneIntegration:
       target: arm9

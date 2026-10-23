@@ -89,8 +89,8 @@ namespace NWAV::Core
 
 	static void parseCue(FSFile* file, u32 offset, u32 size, Info& info)
 	{
-		// Each cue point: name (used as the event ID), position, chunk,
-		// chunk start, block start and sample offset.
+		// Each cue point: ID (the event ID, the hash of its name: see EventID),
+		// position, chunk, chunk start, block start and sample offset.
 		u8 entry[24];
 		if (size < 4 || !readAt(file, offset, entry, 4))
 			return;

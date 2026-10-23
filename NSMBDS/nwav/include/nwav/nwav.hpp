@@ -2,7 +2,8 @@
 |  NWAV player core declarations.                             |
 |  Streams standard RIFF WAV files (PCM8, PCM16, IMA-ADPCM,   |
 |  mono or stereo) from the ROM file system. Loop points come |
-|  from the smpl chunk and events from cue points.            |
+|  from the smpl chunk and events from cue points. Event IDs  |
+|  are the hashes of the event names (see EventID).           |
 |                                                             |
 |  The core only depends on the SDK. The game hooks that call |
 |  init() and update() live in the module's Hooks component.  |
@@ -20,6 +21,21 @@ namespace NWAV
 	// every function silently ignores stale handles.
 	using Handle = u32;
 	constexpr Handle InvalidHandle = 0;
+
+	/// <summary>
+	/// The ID of the cue point that nwavtool writes for an event named `name`: the
+	/// FNV-1a (32-bit) hash of the name. Compare it with the ID the event handler gets.
+	/// </summary>
+	consteval u32 EventID(const char* name)
+	{
+		u32 hash = 2166136261u;
+		while (*name)
+		{
+			hash ^= static_cast<u8>(*name++);
+			hash *= 16777619u;
+		}
+		return hash;
+	}
 
 	// Called from update() on the main thread when playback reaches a cue point.
 	using EventHandler = void(*)(Handle handle, u32 eventID, void* arg);
