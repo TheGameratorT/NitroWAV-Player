@@ -8,6 +8,7 @@
 
 #include "nwav/hooks.hpp"
 
+#include <nsmb/game/stage/player/common.hpp>
 #include <nsmb/game/sound.hpp>
 
 extern "C" void NWAVi_SndPlayerSetTrackMute(NNSSndHandle* handle, u16 trackBitMask, BOOL flag);
@@ -27,6 +28,31 @@ namespace NWAV::Hooks
 	};
 
 	static Binding bindings[PlayerCount];
+
+#ifdef NWAV_BGM_BAHP
+	// The game's "bahp" flag, which makes the enemies dance on the beat. A BGM
+	// stream marks the beats with cue points named "bahp". The flag stays set for
+	// one frame, as the sequence's own bahp did, and only in single player: there
+	// the enemies that read it (see CoopFixes::Blockhopper) use their own timing.
+	static u8& bahpFlag = *rcast<u8*>(0x02088B9C);
+	static bool bahpRaised;
+#endif
+
+	[[gnu::weak]] void onBGMEvent(Handle, u32)
+	{
+	}
+
+	static void dispatchBGMEvent(Handle handle, u32 eventID, void*)
+	{
+#ifdef NWAV_BGM_BAHP
+		if (eventID == EventID("bahp") && Game::getPlayerCount() == 1)
+		{
+			bahpFlag = 1;
+			bahpRaised = true;
+		}
+#endif
+		onBGMEvent(handle, eventID);
+	}
 
 	[[gnu::weak]] const BGMEntry* getBGMTable(u32& count)
 	{
@@ -71,6 +97,15 @@ namespace NWAV::Hooks
 
 	void updateBGM()
 	{
+#ifdef NWAV_BGM_BAHP
+		// Called right before NWAV::update dispatches this frame's events.
+		if (bahpRaised)
+		{
+			bahpFlag = 0;
+			bahpRaised = false;
+		}
+#endif
+
 		for (u32 i = 0; i < PlayerCount; i++)
 		{
 			Binding& b = bindings[i];
@@ -93,7 +128,7 @@ namespace NWAV::Hooks
 				if (b.entry)
 				{
 					b.seqPlayer = seqPlayer;
-					b.stream = playExtFile(b.entry->fileID, { .priority = BGMPriority });
+					b.stream = playExtFile(b.entry->fileID, { .priority = BGMPriority, .onEvent = dispatchBGMEvent });
 					if (b.stream == InvalidHandle)
 					{
 						NWAV_LOG("NWAV BGM: stream failed, the sequence plays instead\n");

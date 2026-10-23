@@ -26,6 +26,15 @@ namespace NWAV::Hooks
 	/// </summary>
 	const BGMEntry* getBGMTable(u32& count);
 
+	/// <summary>
+	/// Called on the main thread for every event (cue point) a BGM stream reaches,
+	/// after the module's own handling of it. The module defines it weakly as empty;
+	/// a project replaces it by defining this function.
+	/// </summary>
+	/// <param name="handle">The BGM stream.</param>
+	/// <param name="eventID">The event's ID. Compare it with NWAV::EventID("name").</param>
+	void onBGMEvent(Handle handle, u32 eventID);
+
 	/// <summary>Starts streaming a WAV file by its extended file ID, as used by the game and the "fid" literal.</summary>
 	/// <returns>The playback handle, or InvalidHandle if the file is invalid or no stream was free.</returns>
 	Handle playExtFile(u32 extFileID, const PlayParams& params = {});
