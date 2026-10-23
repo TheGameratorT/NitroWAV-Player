@@ -1,9 +1,11 @@
 /*============================================================\
 |  NWAV BGM replacement.                                      |
-|  The game keeps playing its BGM sequences, muted, so all of |
-|  its music logic (crossfades, fades, pauses, hurry up) runs |
-|  untouched. Each frame the sequence players are mirrored    |
-|  onto streams: volume, pause, tempo and stop.               |
+|  A sequence that has a stream in the BGM table never starts:|
+|  the stream plays in its place. The game's controls for the |
+|  music (volume and fades, pause, stop, tempo) are forwarded |
+|  to the stream. With no sequence player, the game does not  |
+|  copy the sequence variables either, so only the stream's   |
+|  own "bahp" events reach the enemies.                       |
 \============================================================*/
 
 #include "nwav/hooks.hpp"
@@ -11,23 +13,9 @@
 #include <nsmb/game/stage/player/common.hpp>
 #include <nsmb/game/sound.hpp>
 
-extern "C" void NWAVi_SndPlayerSetTrackMute(NNSSndHandle* handle, u16 trackBitMask, BOOL flag);
-
 namespace NWAV::Hooks
 {
-	constexpr u32 PlayerCount = 2;
-	constexpr s32 TempoRatioOne = 256;
-
-	struct Binding
-	{
-		NNSSndSeqPlayer* seqPlayer;
-		const BGMEntry* entry;
-		Handle stream;
-		s32 tempoRatio;
-		bool started;
-	};
-
-	static Binding bindings[PlayerCount];
+	static Handle bgmStream = InvalidHandle;
 
 #ifdef NWAV_BGM_BAHP
 	// The game's "bahp" flag, which makes the enemies dance on the beat. A BGM
@@ -72,27 +60,9 @@ namespace NWAV::Hooks
 		return nullptr;
 	}
 
-	static s32 findPlayer(const NNSSndHandle* handle)
+	Handle getBGMStream()
 	{
-		for (u32 i = 0; i < PlayerCount; i++)
-		{
-			if (handle == &SND::Internal::seqPlayerPool[i].handle)
-				return s32(i);
-		}
-		return -1;
-	}
-
-	static void unbind(Binding& b)
-	{
-		NWAV::stop(b.stream);
-		b.seqPlayer = nullptr;
-		b.entry = nullptr;
-		b.stream = InvalidHandle;
-	}
-
-	Handle getBGMStream(u32 playerIndex)
-	{
-		return playerIndex < PlayerCount ? bindings[playerIndex].stream : InvalidHandle;
+		return bgmStream;
 	}
 
 	void updateBGM()
@@ -106,94 +76,77 @@ namespace NWAV::Hooks
 		}
 #endif
 
-		for (u32 i = 0; i < PlayerCount; i++)
+		if (!NWAV::isPlaying(bgmStream))
+			bgmStream = InvalidHandle;
+	}
+
+	// The call to SND::Internal::startSeq(id) in Sound::startSeq, its only caller.
+	// Replaced sequences start their stream instead of the sequence.
+	ncp_call(0x02011ECC)
+	BOOL NWAV_startSeq(int seqID)
+	{
+		const BGMEntry* entry = findEntry(seqID);
+		NWAV_LOG("NWAV startSeq: seqID=" << seqID << " entry=" << entry << "\n");
+
+		// Whatever played before is replaced, a sequence or a stream.
+		NWAV::stop(bgmStream);
+		bgmStream = InvalidHandle;
+
+		if (entry)
 		{
-			Binding& b = bindings[i];
-			NNSSndHandle* handle = &SND::Internal::seqPlayerPool[i].handle;
-			NNSSndSeqPlayer* seqPlayer = handle->player;
-
-			if (b.started)
+			SND::Internal::stopSeq(0);
+			bgmStream = playExtFile(entry->fileID, { .priority = BGMPriority, .onEvent = dispatchBGMEvent });
+			if (bgmStream != InvalidHandle)
 			{
-				// A new sequence started on this player, even if it is the
-				// same one again: restart the stream from the beginning.
-				b.started = false;
-				unbind(b);
-
-				NWAV_LOG("NWAV BGM: player " << i << " started, seqPlayer=" << seqPlayer
-					<< " seqType=" << u32(seqPlayer ? seqPlayer->seqType : 0) << " seqNo=" << u32(seqPlayer ? seqPlayer->seqNo : 0) << "\n");
-
-				if (seqPlayer && seqPlayer->seqType == NNS_SND_PLAYER_SEQ_TYPE_SEQ)
-					b.entry = findEntry(seqPlayer->seqNo);
-				NWAV_LOG("NWAV BGM: entry=" << b.entry << "\n");
-				if (b.entry)
-				{
-					b.seqPlayer = seqPlayer;
-					b.stream = playExtFile(b.entry->fileID, { .priority = BGMPriority, .onEvent = dispatchBGMEvent });
-					if (b.stream == InvalidHandle)
-					{
-						NWAV_LOG("NWAV BGM: stream failed, the sequence plays instead\n");
-						b.entry = nullptr; // Let the sequence play rather than go silent.
-					}
-				}
+				NWAV::setDecibelOffset(bgmStream, entry->decibels);
+				return TRUE;
 			}
-
-			if (!b.entry)
-				continue;
-
-			// The sequence stopped, or finished fading out.
-			if (seqPlayer != b.seqPlayer)
-			{
-				NWAV_LOG("NWAV BGM: player " << i << " sequence stopped, unbinding\n");
-				unbind(b);
-				continue;
-			}
-
-			// Mute every frame, since the game unmutes tracks on its own (World 8).
-			NWAVi_SndPlayerSetTrackMute(handle, 0xFFFF, TRUE);
-
-			if (!NWAV::isPlaying(b.stream))
-				continue;
-
-			// The summed sequence volume of the previous frame: initial, external,
-			// player and fader, in tenths of a decibel.
-			NWAV::setDecibelOffset(b.stream, seqPlayer->volume + b.entry->decibels);
-			NWAV::setPaused(b.stream, seqPlayer->pauseFlag);
-#ifdef NWAV_BGM_FOLLOW_TEMPO
-			NWAV::setSpeed(b.stream, b.tempoRatio << (FX32_SHIFT - 8));
-#endif
+			NWAV_LOG("NWAV startSeq: stream failed, the sequence plays instead\n");
 		}
+
+		return SND::Internal::startSeq(seqID);
 	}
 
-	static void onSeqStarted(NNSSndHandle* handle)
+	// The game's music controls start with "STMFD SP!, {R4,LR}". Each one is replaced
+	// by a jump to a function below, which runs the original through a copy of that
+	// instruction and a branch past it, then does the same to the stream.
+	ncp_asmfunc static void fadeSeqVolumeOriginal(int volume, int frames) { asm("STMFD SP!, {R4,LR}\nB 0x0204DCB8"); }
+	ncp_asmfunc static void stopSeqOriginal(int frames) { asm("STMFD SP!, {R4,LR}\nB 0x0204E424"); }
+	ncp_asmfunc static void pauseSeqOriginal(BOOL paused) { asm("STMFD SP!, {R4,LR}\nB 0x0204E480"); }
+	ncp_asmfunc static BOOL setTempoRatioOriginal(int ratio) { asm("STMFD SP!, {R4,LR}\nB 0x0204E530"); }
+
+	// SND::Internal::fadeSeqVolume(volume, frames)
+	ncp_jump(0x0204DCB4)
+	void NWAV_fadeSeqVolume(int volume, int frames)
 	{
-		s32 i = findPlayer(handle);
-		if (i < 0)
-			return;
-		bindings[i].started = true;
-		bindings[i].tempoRatio = TempoRatioOne;
+		fadeSeqVolumeOriginal(volume, frames);
+		NWAV::setVolume(bgmStream, volume, frames);
 	}
 
-	// The three places the game starts a BGM sequence.
-	BOOL NWAV_startSeq(NNSSndHandle* handle, int seqNo)
+	// SND::Internal::stopSeq(frames)
+	ncp_jump(0x0204E420)
+	void NWAV_stopSeq(int frames)
 	{
-		BOOL started = NNS_SndArcPlayerStartSeq(handle, seqNo);
-		NWAV_LOG("NWAV startSeq: seqNo=" << seqNo << " started=" << started << " player=" << findPlayer(handle) << "\n");
-		if (started)
-			onSeqStarted(handle);
-		return started;
+		stopSeqOriginal(frames);
+		NWAV::stop(bgmStream, frames);
 	}
 
-	// SND::Internal::setTempoRatio(NNSSndHandle*, s32), the only caller.
-	ncp_call(0x0204E4F4)
-	void NWAV_setTempoRatio(NNSSndHandle* handle, int ratio)
+	// SND::Internal::pauseSeq(paused)
+	ncp_jump(0x0204E47C)
+	void NWAV_pauseSeq(BOOL paused)
 	{
-		NNS_SndPlayerSetTempoRatio(handle, ratio); // Keep replaced instruction
-		s32 i = findPlayer(handle);
-		if (i >= 0)
-			bindings[i].tempoRatio = ratio;
+		pauseSeqOriginal(paused);
+		NWAV::setPaused(bgmStream, paused);
 	}
+
+#ifdef NWAV_BGM_FOLLOW_TEMPO
+	// SND::Internal::setTempoRatio(ratio), where 256 is the sequence's own tempo.
+	ncp_jump(0x0204E52C)
+	BOOL NWAV_setTempoRatio(int ratio)
+	{
+		BOOL result = setTempoRatioOriginal(ratio);
+		NWAV::setSpeed(bgmStream, ratio << (FX32_SHIFT - 8));
+		return result;
+	}
+#endif
 }
-
-ncp_set_call(0x0204E6BC, NWAV::Hooks::NWAV_startSeq) // SND::Internal::startSeq, fanfares
-ncp_set_call(0x0204E748, NWAV::Hooks::NWAV_startSeq) // SND::Internal::startSeq, star/switch/mega
-ncp_set_call(0x0204E970, NWAV::Hooks::NWAV_startSeq) // SND::Internal::updateSound, after a crossfade

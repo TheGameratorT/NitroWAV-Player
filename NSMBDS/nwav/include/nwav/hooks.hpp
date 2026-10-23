@@ -39,10 +39,9 @@ namespace NWAV::Hooks
 	/// <returns>The playback handle, or InvalidHandle if the file is invalid or no stream was free.</returns>
 	Handle playExtFile(u32 extFileID, const PlayParams& params = {});
 
-	/// <summary>Mirrors the game's BGM sequence players onto streams. (Called by the frame hook)</summary>
+	/// <summary>Ends the frame's bahp and forgets a finished BGM stream. (Called by the frame hook)</summary>
 	void updateBGM();
 
-	/// <summary>Gets the stream replacing a BGM sequence player, if any.</summary>
-	/// <param name="playerIndex">The index into SND::Internal::seqPlayerPool.</param>
-	Handle getBGMStream(u32 playerIndex);
+	/// <summary>Gets the stream that plays in place of the current BGM sequence, if any.</summary>
+	Handle getBGMStream();
 }
