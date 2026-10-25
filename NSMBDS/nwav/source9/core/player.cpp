@@ -42,6 +42,7 @@ namespace NWAV
 		Handle handle;
 		bool active;
 		bool paused;
+		bool suspended;			// Paused for sleep mode, resumed on wake.
 		volatile bool finished;
 		u8 priority;
 		u8 pan;
@@ -94,6 +95,8 @@ namespace NWAV
 	static OSMessageQueue msgQ;
 	static OSMessage msgBuf[NWAV_MAX_STREAMS * 2];
 	static OSThread strmThread;
+	static PMSleepCallbackInfo preSleepInfo;
+	static PMSleepCallbackInfo postSleepInfo;
 	static u64 strmThreadStack[NWAV_THREAD_STACK_SIZE / sizeof(u64)];
 
 	/*=========================\
@@ -522,6 +525,7 @@ namespace NWAV
 
 		s.active = true;
 		s.paused = false;
+		s.suspended = false;
 		s.priority = params.priority;
 		s.pan = params.pan;
 		s.serial = nextSerial++;
@@ -716,6 +720,41 @@ namespace NWAV
 		return frame;
 	}
 
+	// Sleep mode powers the sound circuit down under the channels and the alarms, so
+	// the ring and its refills come back out of phase. As NNS does for its capture
+	// and stream players, the timers stop before sleep and restart on wake: a stream
+	// resumes from the page that was playing, like an unpause.
+	static void beginSleep(void*)
+	{
+		OS_LockMutex(&lock);
+		for (Slot& s : slots)
+		{
+			s.suspended = s.active && !s.paused;
+			if (s.suspended)
+				setSlotPaused(s, true);
+		}
+		OS_UnlockMutex(&lock);
+
+		// The stop has to reach the ARM7 before it sleeps.
+		u32 tag = SND_GetCurrentCommandTag();
+		SND_FlushCommand(SND_COMMAND_BLOCK);
+		SND_WaitForCommandProc(tag);
+	}
+
+	static void endSleep(void*)
+	{
+		OS_LockMutex(&lock);
+		for (Slot& s : slots)
+		{
+			if (s.suspended)
+			{
+				s.suspended = false;
+				setSlotPaused(s, false);
+			}
+		}
+		OS_UnlockMutex(&lock);
+	}
+
 	void init(const InitParams& params)
 	{
 		initParams = params;
@@ -730,6 +769,12 @@ namespace NWAV
 
 		OS_InitMutex(&lock);
 		OS_InitMessageQueue(&msgQ, msgBuf, NWAV_MAX_STREAMS * 2);
+
+		// First in line, so the streams stop before the rest of the sound system sleeps.
+		PM_SetSleepCallbackInfo(&preSleepInfo, beginSleep, nullptr);
+		PM_SetSleepCallbackInfo(&postSleepInfo, endSleep, nullptr);
+		PM_PrependPreSleepCallback(&preSleepInfo);
+		PM_AppendPostSleepCallback(&postSleepInfo);
 		OS_CreateThread(
 			&strmThread,
 			streamThread,
