@@ -53,13 +53,16 @@ into these formats, to check a file, or to migrate old `.nwav` files.
 NWAV::Handle h = NWAV::Hooks::playExtFile("music/boss.wav"fid);
 NWAV::setVolume(h, 64, 30); // Fade to half volume over 30 frames.
 NWAV::stop(h, 60);          // Fade out over 60 frames, then stop.
+
+// A sound effect, which stops when the game stops its own (SoundIntegration).
+NWAV::Hooks::playExtFile("voice/yahoo.wav"fid, { .tags = NWAV::Hooks::SFXTag });
 ```
 
 `NWAV::play` takes a NitroFS file ID, which counts the game's 131 overlays, while
 the `fid` literal gives the game's extended ID. `playExtFile` adds the offset.
 
-`PlayParams` sets the volume, pan, priority, loop mode, speed, start frame,
-fade-in and event handler. See `NSMBDS/nwav/include/nwav/nwav.hpp`.
+`PlayParams` sets the volume, pan, priority, tags, loop
+mode, speed, start frame, fade-in, event handler and a user data pointer, which `NWAV::getUserData` reads back from the handle. See `NSMBDS/nwav/include/nwav/nwav.hpp`.
 
 ## Components
 
@@ -74,7 +77,15 @@ game is a component (see `NSMBDS/nwav/module.yaml`), which a project can switch 
 | `BGMReplace`       | Plays a WAV in place of the game's BGM sequences, following their volume, fades, pauses, crossfades and stops. |
 | `BGMFollowTempo`   | Speeds the stream up along with the hurry-up tempo. |
 | `BGMBahp`          | Raises the game's "bahp" flag (the enemies' dance beat) for a frame on each `bahp` event of a BGM stream, in single player. |
-| `SceneIntegration` | Pauses streams when the game pauses its sound, and stops non-BGM streams on a scene switch. |
+| `SoundIntegration` | Pauses streams when the game pauses its sound, and stops the streams played as sound effects (tagged `NWAV::Hooks::SFXTag`) whenever the game stops its own, as scenes do when they end. |
+
+The game's music functions are hooked at their entry, not at their calls, so code
+that calls them directly (other hacks included) controls the BGM stream too.
+
+To start the player from your own hooks, switch `Hooks` off, call `NWAV::init`
+once the game's sound system is up, and call `NWAV::Hooks::update()` once per
+frame before `NNS_SndMain`. Call it in place of `NWAV::update`, because it also
+steps the BGM components. `playExtFile` and the other components keep working.
 
 The module needs `-fno-short-enums` in your common compiler flags, because the
 game's structs were built with 4 byte enums. Define `NWAV_DEBUG` to log what the

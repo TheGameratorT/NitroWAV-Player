@@ -70,6 +70,7 @@ namespace NWAV::Core
 		s32 got = FS_ReadFile(dec.file, dec.buf, s32(len));
 		if (got <= 0)
 		{
+			NWAV_LOG("NWAV decode: read failed at offset " << dec.filePos << ", the stream ends early\n");
 			dec.filePos = dec.dataEnd;
 			return false;
 		}

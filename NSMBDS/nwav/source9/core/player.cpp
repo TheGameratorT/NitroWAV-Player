@@ -46,6 +46,7 @@ namespace NWAV
 		u8 priority;
 		u8 pan;
 		u32 serial;
+		u32 tags;
 
 		volatile u32 epoch;		// Bumped whenever the timers stop, so stale alarms are dropped.
 		volatile u32 irqCount;	// Alarms received.
@@ -66,7 +67,7 @@ namespace NWAV
 		u32 channelVolume;		// Last value sent to the hardware.
 
 		EventHandler onEvent;
-		void* eventArg;
+		void* userData;
 		PendingEvent pending[MaxPendingEvents];
 		u32 pendingHead;
 		u32 pendingTail;
@@ -138,7 +139,10 @@ namespace NWAV
 
 			u32 next = (s.pendingTail + 1) % MaxPendingEvents;
 			if (next == s.pendingHead)
+			{
+				NWAV_LOG("NWAV stream: handle=" << s.handle << " event queue full, dropped the events at frame " << event.frame << "\n");
 				return;
+			}
 			s.pending[s.pendingTail] = { event.id, fillIndex };
 			s.pendingTail = next;
 		}
@@ -173,6 +177,14 @@ namespace NWAV
 	// Catches up with the alarms received for a stream. (Stream thread, lock held)
 	static void service(Slot& s)
 	{
+#ifdef NWAV_DEBUG
+		// Every page the hardware played since the last service needs a refill; once
+		// that is the whole ring, the hardware is replaying pages that were not refilled.
+		// (Not left to NWAV_LOG: the volatile reads of the check would stay in release.)
+		if (s.irqCount - s.alarmCount >= NWAV_PAGES && !s.ph.ended)
+			NWAV_LOG("NWAV stream: handle=" << s.handle << " underrun, " << (s.irqCount - s.alarmCount) << " pages behind\n");
+#endif
+
 		while (s.alarmCount != s.irqCount)
 		{
 			s.alarmCount++;
@@ -308,6 +320,8 @@ namespace NWAV
 		if (!s.active)
 			return;
 
+		NWAV_LOG("NWAV stop: handle=" << s.handle << "\n");
+
 		if (!s.paused)
 			stopTimers(s);
 		else
@@ -407,7 +421,7 @@ namespace NWAV
 		PendingEvent events[NWAV_MAX_STREAMS][MaxPendingEvents];
 		u32 numEvents[NWAV_MAX_STREAMS] = {};
 		EventHandler handlers[NWAV_MAX_STREAMS];
-		void* args[NWAV_MAX_STREAMS];
+		void* userData[NWAV_MAX_STREAMS];
 		Handle handles[NWAV_MAX_STREAMS];
 
 		OS_LockMutex(&lock);
@@ -416,7 +430,7 @@ namespace NWAV
 			Slot& s = slots[i];
 			updateSlot(s, events[i], numEvents[i]);
 			handlers[i] = s.onEvent;
-			args[i] = s.eventArg;
+			userData[i] = s.userData;
 			handles[i] = s.handle;
 		}
 		OS_UnlockMutex(&lock);
@@ -425,17 +439,15 @@ namespace NWAV
 		for (u32 i = 0; i < NWAV_MAX_STREAMS; i++)
 		{
 			for (u32 j = 0; j < numEvents[i]; j++)
-				handlers[i](handles[i], events[i][j].id, args[i]);
+				handlers[i](handles[i], events[i][j].id, userData[i]);
 		}
 	}
 
 	Handle play(u32 fileID, const PlayParams& params)
 	{
-		NWAV_LOG("NWAV play: fileID=" << fileID << " priority=" << u32(params.priority) << "\n");
-
 		if (!romArchive)
 		{
-			NWAV_LOG("NWAV play: no ROM archive, init was not called\n");
+			NWAV_LOG("NWAV play: file=" << fileID << " failed, init was not called\n");
 			return InvalidHandle;
 		}
 
@@ -444,7 +456,7 @@ namespace NWAV
 		Slot* slot = pickSlot(params.priority);
 		if (!slot)
 		{
-			NWAV_LOG("NWAV play: no free slot\n");
+			NWAV_LOG("NWAV play: file=" << fileID << " failed, every stream has a priority above " << u32(params.priority) << "\n");
 			OS_UnlockMutex(&lock);
 			return InvalidHandle;
 		}
@@ -455,14 +467,14 @@ namespace NWAV
 		FS_InitFile(&s.file);
 		if (!FS_OpenFileFast(&s.file, FSFileID{ romArchive, fileID }))
 		{
-			NWAV_LOG("NWAV play: could not open file " << fileID << "\n");
+			NWAV_LOG("NWAV play: file=" << fileID << " failed, the file could not be opened\n");
 			OS_UnlockMutex(&lock);
 			return InvalidHandle;
 		}
 
 		if (!Core::parseWav(&s.file, s.info))
 		{
-			NWAV_LOG("NWAV play: not a valid WAV, size=" << u32(FS_GetLength(&s.file)) << "\n");
+			NWAV_LOG("NWAV play: file=" << fileID << " failed, not a playable WAV\n");
 			FS_CloseFile(&s.file);
 			OS_UnlockMutex(&lock);
 			return InvalidHandle;
@@ -472,7 +484,7 @@ namespace NWAV
 		u8* memory = static_cast<u8*>(initParams.allocate(ringSize * s.info.channels + NWAV_READ_SIZE));
 		if (!memory)
 		{
-			NWAV_LOG("NWAV play: could not allocate " << (ringSize * s.info.channels + NWAV_READ_SIZE) << " bytes\n");
+			NWAV_LOG("NWAV play: file=" << fileID << " failed, could not allocate " << (ringSize * s.info.channels + NWAV_READ_SIZE) << " bytes\n");
 			FS_CloseFile(&s.file);
 			OS_UnlockMutex(&lock);
 			return InvalidHandle;
@@ -513,10 +525,11 @@ namespace NWAV
 		s.priority = params.priority;
 		s.pan = params.pan;
 		s.serial = nextSerial++;
+		s.tags = params.tags;
 		s.speed = params.speed;
 		s.decibelOffset = 0;
 		s.onEvent = params.onEvent;
-		s.eventArg = params.eventArg;
+		s.userData = params.userData;
 
 		s.volume = params.fadeInFrames ? 0 : s32(params.volume) << VolumeShift;
 		s.fadeFrames = 0;
@@ -526,25 +539,32 @@ namespace NWAV
 
 		startTimers(s);
 
-		NWAV_LOG("NWAV play: started slot=" << slotIndex(s) << " format=" << u32(s.info.format) << " channels=" << u32(s.info.channels)
-			<< " rate=" << s.info.sampleRate << " frames=" << s.info.numFrames << " loop=" << u32(ph.looping)
-			<< " volume=" << u32(params.volume) << "\n");
+		NWAV_LOG("NWAV play: file=" << fileID << " handle=" << s.handle << " priority=" << u32(params.priority)
+			<< " " << (s.info.format == Core::Format::Pcm8 ? "PCM8" : s.info.format == Core::Format::Pcm16 ? "PCM16" : "IMA")
+			<< " channels=" << u32(s.info.channels) << " rate=" << s.info.sampleRate << " frames=" << s.info.numFrames
+			<< " events=" << u32(s.info.numEvents));
+		if (ph.looping)
+			NWAV_LOG(" loop=" << ph.loopStart << "-" << ph.limit);
+		NWAV_LOG("\n");
 
 		Handle handle = s.handle;
 		OS_UnlockMutex(&lock);
 		return handle;
 	}
 
+	static void stopSlot(Slot& s, u32 fadeFrames)
+	{
+		if (fadeFrames == 0 || s.paused)
+			releaseSlot(s);
+		else
+			startFade(s, 0, fadeFrames, true);
+	}
+
 	void stop(Handle handle, u32 fadeFrames)
 	{
 		OS_LockMutex(&lock);
 		if (Slot* s = getSlot(handle))
-		{
-			if (fadeFrames == 0 || s->paused)
-				releaseSlot(*s);
-			else
-				startFade(*s, 0, fadeFrames, true);
-		}
+			stopSlot(*s, fadeFrames);
 		OS_UnlockMutex(&lock);
 	}
 
@@ -553,12 +573,19 @@ namespace NWAV
 		OS_LockMutex(&lock);
 		for (Slot& s : slots)
 		{
-			if (!s.active || s.priority >= belowPriority)
-				continue;
-			if (fadeFrames == 0 || s.paused)
-				releaseSlot(s);
-			else
-				startFade(s, 0, fadeFrames, true);
+			if (s.active && s.priority < belowPriority)
+				stopSlot(s, fadeFrames);
+		}
+		OS_UnlockMutex(&lock);
+	}
+
+	void stopAllTagged(u32 tags, u32 fadeFrames)
+	{
+		OS_LockMutex(&lock);
+		for (Slot& s : slots)
+		{
+			if (s.active && (s.tags & tags))
+				stopSlot(s, fadeFrames);
 		}
 		OS_UnlockMutex(&lock);
 	}
@@ -669,6 +696,12 @@ namespace NWAV
 		OS_UnlockMutex(&lock);
 	}
 
+	void* getUserData(Handle handle)
+	{
+		Slot* s = getSlot(handle);
+		return s ? s->userData : nullptr;
+	}
+
 	u32 getPosition(Handle handle)
 	{
 		OS_LockMutex(&lock);
@@ -687,7 +720,8 @@ namespace NWAV
 	{
 		initParams = params;
 		romArchive = FS_FindArchive("rom", 3);
-		NWAV_LOG("NWAV init: romArchive=" << romArchive << "\n");
+		if (!romArchive)
+			NWAV_LOG("NWAV init: the ROM archive was not found, nothing will play\n");
 
 		u32 mask = 0;
 		for (u32 i = 0; i < NWAV_MAX_STREAMS * 2; i++)

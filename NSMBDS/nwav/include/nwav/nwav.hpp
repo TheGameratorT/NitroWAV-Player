@@ -38,7 +38,7 @@ namespace NWAV
 	}
 
 	// Called from update() on the main thread when playback reaches a cue point.
-	using EventHandler = void(*)(Handle handle, u32 eventID, void* arg);
+	using EventHandler = void(*)(Handle handle, u32 eventID, void* userData);
 
 	struct InitParams
 	{
@@ -58,12 +58,13 @@ namespace NWAV
 		u8 volume = 127;
 		u8 pan = 64;			// Mono files only.
 		u8 priority = 0;		// A stream may replace a playing one of equal or lower priority.
+		u32 tags = 0;			// Bits the caller defines, which stopAllTagged matches.
 		LoopMode loop = LoopMode::File;
 		fx32 speed = FX32_ONE;
 		u32 startFrame = 0;
 		u32 fadeInFrames = 0;
 		EventHandler onEvent = nullptr;
-		void* eventArg = nullptr;
+		void* userData = nullptr;	// Kept with the stream, for the caller and its event handler.
 	};
 
 	/// <summary>Locks the channels and starts the stream thread. (Hook after NNS_SndInit)</summary>
@@ -82,6 +83,9 @@ namespace NWAV
 
 	/// <summary>Stops every stream whose priority is below the given one.</summary>
 	void stopAll(u32 fadeFrames = 0, u32 belowPriority = 256);
+
+	/// <summary>Stops every stream that has any of the given tags (PlayParams::tags).</summary>
+	void stopAllTagged(u32 tags, u32 fadeFrames = 0);
 
 	bool isPlaying(Handle handle);
 
@@ -105,6 +109,9 @@ namespace NWAV
 
 	/// <summary>Changes the playback rate (and pitch). FX32_ONE is the file's own rate.</summary>
 	void setSpeed(Handle handle, fx32 speed);
+
+	/// <summary>Gets the pointer the stream was played with (PlayParams::userData), or nullptr for a stale handle.</summary>
+	void* getUserData(Handle handle);
 
 	/// <summary>Gets the frame being played, accurate to one ring page.</summary>
 	u32 getPosition(Handle handle);

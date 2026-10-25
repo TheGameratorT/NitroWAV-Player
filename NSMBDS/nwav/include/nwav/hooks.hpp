@@ -9,9 +9,13 @@
 
 namespace NWAV::Hooks
 {
-	// Priority of streams that replace the game's BGM. Streams below it are
-	// stopped on scene switches and can never take a BGM stream's slot.
+	// Priority of streams that replace the game's BGM. Streams below it can never
+	// take a BGM stream's slot.
 	constexpr u8 BGMPriority = 128;
+
+	// Tag (PlayParams::tags) of streams that are sound effects. With SoundIntegration,
+	// they stop whenever the game stops its own sound effects.
+	constexpr u32 SFXTag = 1 << 0;
 
 	struct BGMEntry
 	{
@@ -39,7 +43,14 @@ namespace NWAV::Hooks
 	/// <returns>The playback handle, or InvalidHandle if the file is invalid or no stream was free.</returns>
 	Handle playExtFile(u32 extFileID, const PlayParams& params = {});
 
-	/// <summary>Ends the frame's bahp and forgets a finished BGM stream. (Called by the frame hook)</summary>
+	/// <summary>
+	/// Steps the player and the module's components once per frame. The Hooks component
+	/// calls it before NNS_SndMain; a project that switches Hooks off calls it in place
+	/// of NWAV::update, after its own NWAV::init.
+	/// </summary>
+	void update();
+
+	/// <summary>Ends the frame's bahp and forgets a finished BGM stream. (Called by NWAV::Hooks::update)</summary>
 	void updateBGM();
 
 	/// <summary>Gets the stream that plays in place of the current BGM sequence, if any.</summary>

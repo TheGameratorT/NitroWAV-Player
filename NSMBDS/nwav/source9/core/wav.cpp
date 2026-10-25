@@ -38,7 +38,10 @@ namespace NWAV::Core
 	{
 		u8 fmt[20];
 		if (size < 16 || !readAt(file, offset, fmt, size < 20 ? 16 : 20))
+		{
+			NWAV_LOG("NWAV wav: fmt chunk too short (" << size << " bytes)\n");
 			return false;
+		}
 
 		u16 tag = readU16(&fmt[0]);
 		u16 channels = readU16(&fmt[2]);
@@ -48,28 +51,31 @@ namespace NWAV::Core
 		info.sampleRate = readU32(&fmt[4]);
 		info.blockAlign = readU16(&fmt[12]);
 
-		if (channels < 1 || channels > 2 || info.sampleRate == 0)
-			return false;
-
-		if (tag == WaveFormatPcm && (bits == 8 || bits == 16))
+		if (channels >= 1 && channels <= 2 && info.sampleRate != 0)
 		{
-			info.format = bits == 8 ? Format::Pcm8 : Format::Pcm16;
-			return info.blockAlign == channels * (bits / 8);
+			if (tag == WaveFormatPcm && (bits == 8 || bits == 16) && info.blockAlign == channels * (bits / 8))
+			{
+				info.format = bits == 8 ? Format::Pcm8 : Format::Pcm16;
+				return true;
+			}
+
+			if (tag == WaveFormatIma && bits == 4 && size >= 20)
+			{
+				// Each block holds a 4 byte header per channel, then 4 byte words
+				// of 8 samples alternating between the channels.
+				u32 unit = 4 * channels;
+				if (info.blockAlign > unit && info.blockAlign % unit == 0)
+				{
+					info.format = Format::Ima;
+					info.framesPerBlock = u16(1 + (info.blockAlign - unit) / unit * 8);
+					if (readU16(&fmt[18]) == info.framesPerBlock)
+						return true;
+				}
+			}
 		}
 
-		if (tag == WaveFormatIma && bits == 4 && size >= 20)
-		{
-			// Each block holds a 4 byte header per channel, then 4 byte words
-			// of 8 samples alternating between the channels.
-			u32 unit = 4 * channels;
-			if (info.blockAlign <= unit || info.blockAlign % unit != 0)
-				return false;
-
-			info.format = Format::Ima;
-			info.framesPerBlock = u16(1 + (info.blockAlign - unit) / unit * 8);
-			return readU16(&fmt[18]) == info.framesPerBlock;
-		}
-
+		NWAV_LOG("NWAV wav: unsupported fmt, tag=" << u32(tag) << " channels=" << u32(channels) << " bits=" << u32(bits)
+			<< " rate=" << info.sampleRate << " blockAlign=" << u32(info.blockAlign) << "\n");
 		return false;
 	}
 
@@ -99,7 +105,10 @@ namespace NWAV::Core
 		if (count > (size - 4) / 24)
 			count = (size - 4) / 24;
 		if (count > NWAV_MAX_EVENTS)
+		{
+			NWAV_LOG("NWAV wav: " << count << " cue points, only the first " << NWAV_MAX_EVENTS << " are kept (NWAV_MAX_EVENTS)\n");
 			count = NWAV_MAX_EVENTS;
+		}
 
 		for (u32 i = 0; i < count; i++)
 		{
@@ -121,7 +130,10 @@ namespace NWAV::Core
 		if (!readAt(file, 0, header, 12) ||
 			readU32(&header[0]) != fourCC("RIFF") ||
 			readU32(&header[8]) != fourCC("WAVE"))
+		{
+			NWAV_LOG("NWAV wav: not a RIFF WAVE file\n");
 			return false;
+		}
 
 		bool hasFmt = false;
 		bool hasData = false;
@@ -131,7 +143,10 @@ namespace NWAV::Core
 		while (offset + 8 <= fileSize)
 		{
 			if (!readAt(file, offset, header, 8))
+			{
+				NWAV_LOG("NWAV wav: read failed at offset " << offset << "\n");
 				return false;
+			}
 
 			u32 id = readU32(&header[0]);
 			u32 size = readU32(&header[4]);
@@ -142,10 +157,7 @@ namespace NWAV::Core
 			if (id == fourCC("fmt "))
 			{
 				if (!parseFmt(file, body, size, info))
-				{
-					NWAV_LOG("NWAV wav: unsupported fmt chunk\n");
 					return false;
-				}
 				hasFmt = true;
 			}
 			else if (id == fourCC("data"))
@@ -174,7 +186,7 @@ namespace NWAV::Core
 
 		if (!hasFmt || !hasData)
 		{
-			NWAV_LOG("NWAV wav: missing chunk, fmt=" << u32(hasFmt) << " data=" << u32(hasData) << "\n");
+			NWAV_LOG("NWAV wav: no " << (hasFmt ? "data" : "fmt") << " chunk\n");
 			return false;
 		}
 
@@ -200,7 +212,10 @@ namespace NWAV::Core
 		}
 
 		if (info.numFrames == 0)
+		{
+			NWAV_LOG("NWAV wav: no audio frames\n");
 			return false;
+		}
 
 		if (info.hasLoop)
 		{

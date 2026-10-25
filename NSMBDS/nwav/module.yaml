@@ -4,9 +4,10 @@ description: Streams WAV files (PCM8, PCM16, IMA-ADPCM) with seamless loops, and
 
 authors: TheGameratorT
 
-# The core under source9/core only depends on the SDK. Everything that knows
-# about New Super Mario Bros. is a component below, so a project can switch it
-# off and call NWAV::init and NWAV::update from its own hooks instead.
+# The core under source9/core only depends on the SDK. Everything that hooks
+# New Super Mario Bros. is a component below. A project can switch Hooks off and
+# call NWAV::init and NWAV::Hooks::update from its own hooks instead; the other
+# components and NWAV::Hooks::playExtFile keep working.
 targets:
   - arm9:
       includes: "include"
@@ -23,7 +24,7 @@ components:
         NWAV_MAX_EVENTS: 16
         NWAV_THREAD_PRIORITY: 12
 
-  # Starts the player after NNS_SndInit and steps it before NNS_SndMain.
+  # Starts the player after NNS_SndInit and steps it (NWAV::Hooks::update) before NNS_SndMain.
   - Hooks:
       target: arm9
       sources: "source9/hooks/sound.cpp"
@@ -32,14 +33,12 @@ components:
   # which the background HDMA interferes with while streaming.
   - FSInit:
       target: arm9
-      requires: Hooks
-      defines: NWAV_HOOK_FS_INIT
+      sources: "source9/hooks/fsinit.cpp"
 
   # Plays a stream in place of each sequence listed by NWAV::Hooks::getBGMTable,
   # following its volume, fades, pauses and stops.
   - BGMReplace:
       target: arm9
-      requires: Hooks
       defines: NWAV_HOOK_BGM
       sources: "source9/hooks/bgm.cpp"
 
@@ -56,10 +55,9 @@ components:
       requires: BGMReplace
       defines: NWAV_BGM_BAHP
 
-  # Pauses streams with the game's sound and stops non-BGM streams on scene switches.
-  - SceneIntegration:
+  # Pauses streams with the game's sound, and stops the streams played as sound
+  # effects (NWAV::Hooks::SFXTag) whenever the game stops its own sound effects.
+  - SoundIntegration:
       target: arm9
-      requires: Hooks
-      defines:
-        NWAV_SCENE_FADE_FRAMES: 0
-      sources: "source9/hooks/scene.cpp"
+      defines: NWAV_HOOK_SOUND
+      sources: "source9/hooks/sfx.cpp"

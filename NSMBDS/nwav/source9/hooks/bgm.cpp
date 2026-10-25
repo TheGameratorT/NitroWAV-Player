@@ -68,7 +68,7 @@ namespace NWAV::Hooks
 	void updateBGM()
 	{
 #ifdef NWAV_BGM_BAHP
-		// Called right before NWAV::update dispatches this frame's events.
+		// Called by NWAV::Hooks::update right before NWAV::update dispatches this frame's events.
 		if (bahpRaised)
 		{
 			bahpFlag = 0;
@@ -80,13 +80,21 @@ namespace NWAV::Hooks
 			bgmStream = InvalidHandle;
 	}
 
-	// The call to SND::Internal::startSeq(id) in Sound::startSeq, its only caller.
+	// The game's music controls are each replaced by a jump to a function below, which
+	// runs the original through a copy of its first instruction and a branch past it.
+	// Hooking the functions themselves, not their calls, covers every caller,
+	// including overlays and other hacks.
+	ncp_asmfunc static BOOL startSeqOriginal(int seqID) { asm("STMFD SP!, {R4-R6,LR}\nB 0x0204E5B0"); }
+	ncp_asmfunc static void fadeSeqVolumeOriginal(int volume, int frames) { asm("STMFD SP!, {R4,LR}\nB 0x0204DCB8"); }
+	ncp_asmfunc static void stopSeqOriginal(int frames) { asm("STMFD SP!, {R4,LR}\nB 0x0204E424"); }
+	ncp_asmfunc static BOOL setTempoRatioOriginal(int ratio) { asm("STMFD SP!, {R4,LR}\nB 0x0204E530"); }
+
+	// SND::Internal::startSeq(seqID)
 	// Replaced sequences start their stream instead of the sequence.
-	ncp_call(0x02011ECC)
+	ncp_jump(0x0204E5AC)
 	BOOL NWAV_startSeq(int seqID)
 	{
 		const BGMEntry* entry = findEntry(seqID);
-		NWAV_LOG("NWAV startSeq: seqID=" << seqID << " entry=" << entry << "\n");
 
 		// Whatever played before is replaced, a sequence or a stream.
 		NWAV::stop(bgmStream);
@@ -98,22 +106,15 @@ namespace NWAV::Hooks
 			bgmStream = playExtFile(entry->fileID, { .priority = BGMPriority, .onEvent = dispatchBGMEvent });
 			if (bgmStream != InvalidHandle)
 			{
+				NWAV_LOG("NWAV BGM: seq=" << seqID << " plays as handle=" << bgmStream << "\n");
 				NWAV::setDecibelOffset(bgmStream, entry->decibels);
 				return TRUE;
 			}
-			NWAV_LOG("NWAV startSeq: stream failed, the sequence plays instead\n");
+			NWAV_LOG("NWAV BGM: seq=" << seqID << " stream failed, the sequence plays instead\n");
 		}
 
-		return SND::Internal::startSeq(seqID);
+		return startSeqOriginal(seqID);
 	}
-
-	// The game's music controls start with "STMFD SP!, {R4,LR}". Each one is replaced
-	// by a jump to a function below, which runs the original through a copy of that
-	// instruction and a branch past it, then does the same to the stream.
-	ncp_asmfunc static void fadeSeqVolumeOriginal(int volume, int frames) { asm("STMFD SP!, {R4,LR}\nB 0x0204DCB8"); }
-	ncp_asmfunc static void stopSeqOriginal(int frames) { asm("STMFD SP!, {R4,LR}\nB 0x0204E424"); }
-	ncp_asmfunc static void pauseSeqOriginal(BOOL paused) { asm("STMFD SP!, {R4,LR}\nB 0x0204E480"); }
-	ncp_asmfunc static BOOL setTempoRatioOriginal(int ratio) { asm("STMFD SP!, {R4,LR}\nB 0x0204E530"); }
 
 	// SND::Internal::fadeSeqVolume(volume, frames)
 	ncp_jump(0x0204DCB4)
@@ -131,13 +132,7 @@ namespace NWAV::Hooks
 		NWAV::stop(bgmStream, frames);
 	}
 
-	// SND::Internal::pauseSeq(paused)
-	ncp_jump(0x0204E47C)
-	void NWAV_pauseSeq(BOOL paused)
-	{
-		pauseSeqOriginal(paused);
-		NWAV::setPaused(bgmStream, paused);
-	}
+	// The pause is in pause.cpp, shared with SoundIntegration.
 
 #ifdef NWAV_BGM_FOLLOW_TEMPO
 	// SND::Internal::setTempoRatio(ratio), where 256 is the sequence's own tempo.
