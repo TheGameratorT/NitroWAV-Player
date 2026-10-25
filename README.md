@@ -15,7 +15,8 @@ Streams music and sound from the ROM on a DS.
 v2. It relies on NCPatcher v2's module system (`module.yaml`, components and
 `nitrofs`), so NCPatcher 1.x cannot build it. Your project also needs the
 [NSMB Code Reference](https://github.com/MammaMiaTeam/NSMB-Code-Reference) and
-the converted Nitro SDK headers.
+the converted Nitro SDK headers. `NSMBDS/nwav-example` is an example module that
+replaces the ground theme with a WAV and its hurry-up version.
 
 To install it, copy the folder into your project's modules directory as
 `modules/nwav`, then add `nwav` to `modules.enabled` in `ncpatcher.yaml`:

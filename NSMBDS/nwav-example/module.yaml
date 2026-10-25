@@ -1,0 +1,14 @@
+id: NWAVEXAMPLE
+name: NWAV Example
+description: Example NWAV setup that replaces the ground theme, with a hurry-up version.
+
+authors:
+  - TheGameratorT
+
+targets:
+  - arm9:
+      - sources:
+          - "source9/**"
+
+nitrofs:
+  dir: nitrofs
