@@ -36,13 +36,15 @@ components:
       sources: "source9/hooks/fsinit.cpp"
 
   # Plays a stream in place of each sequence listed by NWAV::Hooks::getBGMTable,
-  # following its volume, fades, pauses and stops.
+  # following its volume, fades, pauses and stops, and switching to the entry's
+  # hurry track (if it has one) on hurry up.
   - BGMReplace:
       target: arm9
       defines: NWAV_HOOK_BGM
       sources: "source9/hooks/bgm.cpp"
 
-  # Also follows the hurry-up tempo, which changes the stream's pitch.
+  # Also follows the hurry-up tempo on streams without a hurry track, which
+  # changes their pitch.
   - BGMFollowTempo:
       target: arm9
       requires: BGMReplace

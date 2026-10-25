@@ -74,8 +74,8 @@ game is a component (see `NSMBDS/nwav/module.yaml`), which a project can switch 
 | `Config`           | Stream count, buffer sizes and thread priority (see `NSMBDS/nwav/include/nwav/config.hpp`). |
 | `Hooks`            | Starts the player with the sound system and updates it once per frame. |
 | `FSInit`           | Makes the game read the card with the CPU instead of DMA channel 2, which the background HDMA interferes with while streaming. |
-| `BGMReplace`       | Plays a WAV in place of the game's BGM sequences, following their volume, fades, pauses, crossfades and stops. |
-| `BGMFollowTempo`   | Speeds the stream up along with the hurry-up tempo. |
+| `BGMReplace`       | Plays a WAV in place of the game's BGM sequences, following their volume, fades, pauses, crossfades and stops, and switching to the entry's hurry track on hurry up. |
+| `BGMFollowTempo`   | Speeds up streams without a hurry track along with the hurry-up tempo, which raises their pitch. |
 | `BGMBahp`          | Raises the game's "bahp" flag (the enemies' dance beat) for a frame on each `bahp` event of a BGM stream, in single player. |
 | `SoundIntegration` | Pauses streams when the game pauses its sound, and stops the streams played as sound effects (tagged `NWAV::Hooks::SFXTag`) whenever the game stops its own, as scenes do when they end. |
 
@@ -99,8 +99,9 @@ To replace BGM, define the table anywhere in your project:
 #include <nsmb/game/sound.hpp>
 
 static const NWAV::Hooks::BGMEntry bgmTable[] = {
-	// Sequence,         WAV file,                 attenuation (tenths of a dB)
-	{ SeqID::ATHLETIC,   "music/athletic.wav"fid,  0 },
+	// Sequence,         WAV file,                 Hurry WAV file,                 Attenuation (tenths of a dB)
+	{ SeqID::ATHLETIC,   "music/athletic.wav"fid,  "music/athletic_hurry.wav"fid,  0 },
+	{ SeqID::SHIRO,      "music/castle.wav"fid,    NO_HURRY_TRACK,                 0 },
 };
 
 const NWAV::Hooks::BGMEntry* NWAV::Hooks::getBGMTable(u32& count)
@@ -109,6 +110,11 @@ const NWAV::Hooks::BGMEntry* NWAV::Hooks::getBGMTable(u32& count)
 	return bgmTable;
 }
 ```
+
+The hurry track is a faster version of the WAV file, rendered offline so the pitch
+stays the same. On hurry up the stream switches to it, starting from its beginning,
+and a sequence that starts while time is hurried plays it straight away. With
+`NO_HURRY_TRACK` the stream itself speeds up instead (with `BGMFollowTempo`).
 
 To react to the events of the BGM streams, define `onBGMEvent` anywhere in your
 project the same way. It is called on the main thread for every event, after the

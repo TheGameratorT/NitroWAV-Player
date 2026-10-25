@@ -7,6 +7,10 @@
 
 #include "nwav/nwav.hpp"
 
+// BGMEntry::hurryFileID of a stream with no hurry-up version. With
+// BGMFollowTempo, the stream itself speeds up instead (raising its pitch).
+#define NO_HURRY_TRACK u32(-1)
+
 namespace NWAV::Hooks
 {
 	// Priority of streams that replace the game's BGM. Streams below it can never
@@ -19,9 +23,10 @@ namespace NWAV::Hooks
 
 	struct BGMEntry
 	{
-		u32 seqID;		// The sequence to replace.
-		u32 fileID;		// The WAV file that plays instead, as an extended file ID ("fid" literal).
-		s32 decibels;	// Attenuation in tenths of a decibel. Value range = [-723, 0]
+		u32 seqID;			// The sequence to replace.
+		u32 fileID;			// The WAV file that plays instead, as an extended file ID ("fid" literal).
+		u32 hurryFileID;	// The WAV file that plays from its start on hurry up, or NO_HURRY_TRACK.
+		s32 decibels;		// Attenuation in tenths of a decibel. Value range = [-723, 0]
 	};
 
 	/// <summary>
